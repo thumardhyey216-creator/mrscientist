@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import './styles.css';
+
+/* Minimal body styles - mostly handled by styles.css and Tailwind */
+body {
+  font-family: var(--font-body, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,17 @@
+{
+    "name": "neetpg-dashboard",
+    "version": "1.0.0",
+    "description": "NEET-PG Study Dashboard with Notion Integration",
+    "main": "server/server.py",
+    "scripts": {
+        "start": "python server/server.py"
+    },
+    "keywords": [
+        "neet-pg",
+        "study",
+        "dashboard",
+        "notion"
+    ],
+    "author": "",
+    "license": "MIT"
+}
