@@ -2,9 +2,10 @@
     "name": "neetpg-dashboard",
     "version": "1.0.0",
     "description": "NEET-PG Study Dashboard with Notion Integration",
-    "main": "server/server.py",
+    "main": "server/index.js",
+    "type": "module",
     "scripts": {
-        "start": "python server/server.py"
+        "start": "node server/index.js"
     },
     "keywords": [
         "neet-pg",
@@ -13,5 +14,13 @@
         "notion"
     ],
     "author": "",
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "@supabase/supabase-js": "^2.87.1",
+        "axios": "^1.13.2",
+        "cors": "^2.8.5",
+        "dotenv": "^17.2.3",
+        "express": "^5.2.1"
+    }
 }
