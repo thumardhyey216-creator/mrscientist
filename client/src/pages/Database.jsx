@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { useAuth } from '../context/AuthContext';
+// import { createClient } from '@supabase/supabase-js'; // Removed
 import { CONFIG } from '../config';
 import { Filter, ChevronDown, Calendar as CalendarIcon, Plus, X, Table2, Table, LayoutGrid, Search } from 'lucide-react';
 import { Utils } from '../utils';
@@ -9,8 +10,15 @@ import BoardView from '../components/database/BoardView';
 import TagSelector from '../components/database/TagSelector';
 import FilterPanel from '../components/database/FilterPanel';
 import SearchBar from '../components/database/SearchBar';
+import {
+    getTopics,
+    updateTopic as apiUpdateTopic,
+    createTopic as apiCreateTopic,
+    getCustomColumns,
+    addCustomColumn
+} from '../services/api';
 
-const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+// const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); // Removed
 
 // Default saved views
 const DEFAULT_VIEWS = [
@@ -24,6 +32,7 @@ const DEFAULT_VIEWS = [
 
 const Database = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterSubject, setFilterSubject] = useState('All');
@@ -32,7 +41,7 @@ const Database = () => {
     const [showAddRowModal, setShowAddRowModal] = useState(false);
     const [showFilterPanel, setShowFilterPanel] = useState(false);
     const [currentView, setCurrentView] = useState(DEFAULT_VIEWS[0]);
-    const [calendarColumn, setCalendarColumn] = useState('planned_date');
+    const [calendarColumn, setCalendarColumn] = useState('plannedDate');
     const [boardGroupBy, setBoardGroupBy] = useState('completed');
     const [dateColumns, setDateColumns] = useState([]);
     const [customColumns, setCustomColumns] = useState([]);
@@ -49,68 +58,40 @@ const Database = () => {
     });
 
     useEffect(() => {
-        loadData();
-    }, []);
+        if (user) {
+            loadData();
+        }
+    }, [user]);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            // Load topics
-            const { data: topicsData, error: topicsError } = await supabase
-                .from('topics')
-                .select('*')
-                .order('no', { ascending: true });
-
-            if (topicsError) throw topicsError;
-
+            // Load topics via API
+            const topicsData = await getTopics(false, user?.id);
             setTopics(topicsData || []);
 
-            // Extract unique subjects
-            const uniqueSubjects = [...new Set(topicsData?.map(t => t.subject_category).filter(Boolean))];
+            // Extract unique subjects (API returns camelCase)
+            const uniqueSubjects = [...new Set(topicsData?.map(t => t.subjectCategory).filter(Boolean))];
             setSubjects(uniqueSubjects.sort());
 
             // Detect date columns from first topic
             if (topicsData && topicsData.length > 0) {
-                const firstTopic = topicsData[0];
-                const detectedDateCols = [];
-
-                // Check for built-in date columns
-                const builtInDateCols = {
-                    'planned_date': 'Planned Date',
-                    'mcq_solving_date': 'MCQ Done'
-                };
-
-                Object.entries(builtInDateCols).forEach(([key, name]) => {
-                    if (key in firstTopic) {
-                        detectedDateCols.push({ id: key, name });
-                    }
-                });
-
+                const detectedDateCols = [
+                    { key: 'plannedDate', name: 'Planned Date' },
+                    { key: 'mcqSolvingDate', name: 'MCQ Done' },
+                    { key: 'firstRevisionDate', name: '1st Rev Date' },
+                    { key: 'secondRevisionDate', name: '2nd Rev Date' }
+                ];
                 setDateColumns(detectedDateCols);
-
-                // Set default calendar column to first available
-                if (detectedDateCols.length > 0 && !detectedDateCols.find(c => c.id === calendarColumn)) {
-                    setCalendarColumn(detectedDateCols[0].id);
-                }
             }
 
-            // Load custom column definitions
-            const { data: columnsData, error: columnsError } = await supabase
-                .from('custom_column_definitions')
-                .select('*')
-                .order('column_order');
-
-            if (!columnsError && columnsData) {
-                setCustomColumns(columnsData);
-
-                // Add custom date columns
-                const customDateCols = columnsData
-                    .filter(c => c.column_type === 'date')
-                    .map(c => ({ id: `custom_${c.column_name}`, name: c.column_name, isCustom: true }));
-
-                if (customDateCols.length > 0) {
-                    setDateColumns(prev => [...prev, ...customDateCols]);
-                }
+            // Load custom columns
+            try {
+                const customColsData = await getCustomColumns();
+                setCustomColumns(customColsData || []);
+            } catch (colsErr) {
+                console.log('Custom columns not available:', colsErr);
+                setCustomColumns([]);
             }
         } catch (err) {
             console.error('Error loading data:', err);
@@ -119,103 +100,108 @@ const Database = () => {
         }
     };
 
+    // Update topic via API
     const updateTopic = async (id, field, value) => {
         try {
-            const { error } = await supabase
-                .from('topics')
-                .update({ [field]: value })
-                .eq('id', id);
+            // Map camelCase field to snake_case for API
+            const fieldMap = {
+                topicName: 'topic_name',
+                subjectCategory: 'subject_category',
+                plannedDate: 'planned_date',
+                mcqSolvingDate: 'mcq_solving_date',
+                firstRevisionDate: 'first_revision_date',
+                secondRevisionDate: 'second_revision_date',
+                pyqAsked: 'pyq_asked'
+            };
+            const apiField = fieldMap[field] || field;
 
-            if (error) throw error;
+            await apiUpdateTopic(id, { [apiField]: value });
 
+            // Update local state
             setTopics(prev => prev.map(t =>
                 t.id === id ? { ...t, [field]: value } : t
             ));
         } catch (err) {
             console.error('Error updating topic:', err);
+            alert('Failed to update topic');
         }
     };
 
+    // Update custom data
     const updateCustomData = async (id, columnName, value) => {
+        const topic = topics.find(t => t.id === id);
+        const currentCustomData = topic?.customData || {};
+        const updatedData = { ...currentCustomData, [columnName]: value };
+
         try {
-            // Get current custom_data
-            const topic = topics.find(t => t.id === id);
-            const customData = topic?.custom_data || {};
-
-            // Update the specific field
-            const updatedData = { ...customData, [columnName]: value };
-
-            const { error } = await supabase
-                .from('topics')
-                .update({ custom_data: updatedData })
-                .eq('id', id);
-
-            if (error) throw error;
+            await apiUpdateTopic(id, { custom_data: updatedData });
 
             setTopics(prev => prev.map(t =>
-                t.id === id ? { ...t, custom_data: updatedData } : t
+                t.id === id ? { ...t, customData: updatedData } : t
             ));
         } catch (err) {
             console.error('Error updating custom data:', err);
         }
     };
 
+    // Add new row
     const addNewRow = async () => {
         try {
-            const { data, error } = await supabase
-                .from('topics')
-                .insert([{ ...newRow, custom_data: {} }])
-                .select()
-                .single();
-
-            if (error) throw error;
-
-            setTopics(prev => [...prev, data]);
-            setShowAddRowModal(false);
-            setNewRow({
-                topic_name: '',
-                subject_category: '',
-                priority: '',
-                source: '',
-                duration: '',
-                planned_date: ''
+            const newTopicData = await apiCreateTopic({
+                topic_name: newRow.topic_name,
+                subject_category: newRow.subject_category,
+                priority: newRow.priority,
+                source: newRow.source,
+                duration: newRow.duration,
+                planned_date: newRow.planned_date
             });
+
+            // Transform to camelCase for local state
+            const transformedTopic = {
+                id: newTopicData.id,
+                topicName: newTopicData.topic_name,
+                subjectCategory: newTopicData.subject_category,
+                priority: newTopicData.priority,
+                source: newTopicData.source,
+                duration: newTopicData.duration,
+                plannedDate: newTopicData.planned_date,
+                completed: newTopicData.completed,
+                customData: newTopicData.custom_data
+            };
+
+            setTopics(prev => [...prev, transformedTopic]);
+            setShowAddRowModal(false);
+            setNewRow({ topic_name: '', subject_category: '', priority: '', source: '', duration: '', planned_date: '' });
         } catch (err) {
             console.error('Error adding row:', err);
-            alert('Failed to add row: ' + err.message);
+            alert('Failed to add row');
         }
     };
 
+    // Add new column
     const addNewColumn = async () => {
-        if (!newColumn.name) {
-            alert('Please enter a column name');
-            return;
-        }
-
         try {
-            const { data, error } = await supabase
-                .from('custom_column_definitions')
-                .insert([{
-                    column_name: newColumn.name,
-                    column_type: newColumn.type,
-                    column_order: customColumns.length
-                }])
-                .select()
-                .single();
+            await addCustomColumn({
+                column_name: newColumn.name.toLowerCase().replace(/\s+/g, '_'),
+                column_type: newColumn.type,
+                column_order: customColumns.length
+            });
 
-            if (error) throw error;
+            // Reload custom columns
+            const customColsData = await getCustomColumns();
+            setCustomColumns(customColsData || []);
 
-            setCustomColumns(prev => [...prev, data]);
             setShowAddColumnModal(false);
             setNewColumn({ name: '', type: 'text' });
         } catch (err) {
             console.error('Error adding column:', err);
-            alert('Failed to add column: ' + err.message);
+            alert('Failed to add column');
         }
     };
 
+
     const renderCustomColumnInput = (topic, column) => {
-        const value = topic.custom_data?.[column.column_name];
+        const value = topic.customData?.[column.column_name];
 
         switch (column.column_type) {
             case 'text':
@@ -269,29 +255,37 @@ const Database = () => {
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
             filtered = filtered.filter(t =>
-                t.topic_name?.toLowerCase().includes(query) ||
-                t.subject_category?.toLowerCase().includes(query) ||
+                t.topicName?.toLowerCase().includes(query) ||
+                t.subjectCategory?.toLowerCase().includes(query) ||
                 t.source?.toLowerCase().includes(query) ||
-                t.pyq_asked?.toLowerCase().includes(query)
+                t.pyqAsked?.toLowerCase().includes(query)
             );
         }
 
         // Apply view-specific filters
         Object.keys(currentView.filters).forEach(key => {
+            // Filter keys might still be snake_case in DEFAULT_VIEWS if not updated?
+            // default views use 'priority', 'completed'. keys are fine.
             filtered = filtered.filter(t => t[key] === currentView.filters[key]);
         });
 
         // Apply subject filter
         if (filterSubject !== 'All') {
-            filtered = filtered.filter(t => t.subject_category === filterSubject);
+            filtered = filtered.filter(t => t.subjectCategory === filterSubject);
         }
 
         // Apply advanced filters
         advancedFilters.forEach((filter, index) => {
             if (!filter.column || !filter.condition) return;
 
+            // Map column names to camelCase if they are built-in
+            let columnKey = filter.column;
+            if (columnKey === 'topic_name') columnKey = 'topicName';
+            if (columnKey === 'subject_category') columnKey = 'subjectCategory';
+            if (columnKey === 'planned_date') columnKey = 'plannedDate';
+
             const applyFilter = (t) => {
-                const value = t[filter.column];
+                const value = t[columnKey];
                 switch (filter.condition) {
                     case 'is':
                         return value === filter.value;
@@ -444,7 +438,7 @@ const Database = () => {
                             className="px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg text-sm focus:outline-none focus:border-[var(--primary)]"
                         >
                             {dateColumns.map(col => (
-                                <option key={col.id} value={col.id}>{col.name}</option>
+                                <option key={col.key} value={col.key}>{col.name}</option>
                             ))}
                         </select>
                     </div>
@@ -461,7 +455,7 @@ const Database = () => {
                         >
                             <option value="completed">Status</option>
                             <option value="priority">Priority</option>
-                            <option value="subject_category">Subject</option>
+                            <option value="subjectCategory">Subject</option>
                         </select>
                     </div>
                 )}
@@ -494,6 +488,8 @@ const Database = () => {
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-28">Duration</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">Planned Date</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">MCQ Done</th>
+                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">1st Rev Date</th>
+                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">2nd Rev Date</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Completed</th>
                                 {/* Custom Columns */}
                                 {customColumns.map(col => (
@@ -515,24 +511,24 @@ const Database = () => {
                                             onClick={() => navigate(`/topic/${topic.id}`)}
                                             className="text-left hover:text-[var(--primary)] transition-colors"
                                         >
-                                            <div className="font-medium text-[var(--text-primary)]">{topic.topic_name}</div>
-                                            {topic.pyq_asked && (
+                                            <div className="font-medium text-[var(--text-primary)]">{topic.topicName}</div>
+                                            {topic.pyqAsked && (
                                                 <div className="text-xs text-[var(--text-tertiary)] mt-1 line-clamp-1">
-                                                    PYQ: {topic.pyq_asked}
+                                                    PYQ: {topic.pyqAsked}
                                                 </div>
                                             )}
                                         </button>
                                     </td>
                                     <td className="p-3">
-                                        {topic.subject_category && (
+                                        {topic.subjectCategory && (
                                             <span
                                                 className="px-2 py-1 rounded text-xs font-medium"
                                                 style={{
-                                                    backgroundColor: Utils.getSubjectColor(topic.subject_category) + '30',
-                                                    color: Utils.getSubjectColor(topic.subject_category)
+                                                    backgroundColor: Utils.getSubjectColor(topic.subjectCategory) + '30',
+                                                    color: Utils.getSubjectColor(topic.subjectCategory)
                                                 }}
                                             >
-                                                {topic.subject_category}
+                                                {topic.subjectCategory}
                                             </span>
                                         )}
                                     </td>
@@ -559,16 +555,32 @@ const Database = () => {
                                     <td className="p-3">
                                         <input
                                             type="date"
-                                            value={topic.planned_date?.split('T')[0] || ''}
-                                            onChange={(e) => updateTopic(topic.id, 'planned_date', e.target.value)}
+                                            value={topic.plannedDate?.split('T')[0] || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'plannedDate', e.target.value)}
                                             className="px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)] w-full"
                                         />
                                     </td>
                                     <td className="p-3">
                                         <input
                                             type="date"
-                                            value={topic.mcq_solving_date?.split('T')[0] || ''}
-                                            onChange={(e) => updateTopic(topic.id, 'mcq_solving_date', e.target.value)}
+                                            value={topic.mcqSolvingDate?.split('T')[0] || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'mcqSolvingDate', e.target.value)}
+                                            className="px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)] w-full"
+                                        />
+                                    </td>
+                                    <td className="p-3">
+                                        <input
+                                            type="date"
+                                            value={topic.firstRevisionDate?.split('T')[0] || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'firstRevisionDate', e.target.value)}
+                                            className="px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)] w-full"
+                                        />
+                                    </td>
+                                    <td className="p-3">
+                                        <input
+                                            type="date"
+                                            value={topic.secondRevisionDate?.split('T')[0] || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'secondRevisionDate', e.target.value)}
                                             className="px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)] w-full"
                                         />
                                     </td>

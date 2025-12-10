@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { CONFIG } from '../config';
+import { useAuth } from '../context/AuthContext';
+import { getTopics } from '../services/api';
+// import { createClient } from '@supabase/supabase-js'; // Removed
+// import { CONFIG } from '../config';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area,
@@ -10,7 +12,7 @@ import { CheckCircle2, Clock, AlertTriangle, BookOpen, TrendingUp, Calendar as C
 import { Utils } from '../utils';
 import { startOfYear, endOfYear, eachDayOfInterval, format, isSameDay, parseISO, isPast, isFuture, addDays } from 'date-fns';
 
-const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+// const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); // Removed
 
 const COLORS = {
     primary: '#6366f1', // Indigo 500
@@ -46,20 +48,19 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const Analytics = () => {
+    const { user } = useAuth();
     const [loading, setLoading] = useState(true);
     const [topics, setTopics] = useState([]);
 
     useEffect(() => {
-        fetchData();
-    }, []);
+        if (user) {
+            fetchData();
+        }
+    }, [user]);
 
     const fetchData = async () => {
         try {
-            const { data, error } = await supabase
-                .from('topics')
-                .select('*');
-
-            if (error) throw error;
+            const data = await getTopics(true, user?.id);
             setTopics(data || []);
         } catch (error) {
             console.error('Error fetching analytics data:', error);
@@ -80,8 +81,8 @@ const Analytics = () => {
 
         // Backlog: Past planned date AND not completed
         const backlog = topics.filter(t =>
-            t.planned_date &&
-            isPast(parseISO(t.planned_date)) &&
+            t.plannedDate &&
+            isPast(parseISO(t.plannedDate)) &&
             t.completed !== 'True'
         ).length;
 
@@ -92,7 +93,7 @@ const Analytics = () => {
     const subjectProgressData = useMemo(() => {
         const data = {};
         topics.forEach(t => {
-            const subject = t.subject_category || 'Uncategorized';
+            const subject = t.subjectCategory || 'Uncategorized';
             if (!data[subject]) data[subject] = { subject, Completed: 0, Pending: 0 };
             if (t.completed === 'True') data[subject].Completed++;
             else data[subject].Pending++;
@@ -116,7 +117,7 @@ const Analytics = () => {
 
         return next7Days.map(date => {
             const dateStr = format(date, 'yyyy-MM-dd');
-            const dayTopics = topics.filter(t => t.planned_date && t.planned_date.startsWith(dateStr));
+            const dayTopics = topics.filter(t => t.plannedDate && t.plannedDate.startsWith(dateStr));
             const hours = dayTopics.reduce((acc, t) => acc + (parseFloat(t.duration) || 0), 0);
             return {
                 day: format(date, 'EEE'), // Mon, Tue
@@ -136,12 +137,12 @@ const Analytics = () => {
 
         const activityMap = {};
         topics.forEach(t => {
-            if (t.completed === 'True' && t.updated_at) { // Assuming updated_at approximates completion time for now, or use a completed_at if available
+            if (t.completed === 'True' && t.lastEditedTime) { // Assuming updated_at approximates completion time for now, or use a completed_at if available
                 // If we don't have a completed_at, we might use planned_date for 'planned' activity density
                 // Let's use planned_date to show schedule density for now
             }
-            if (t.planned_date) {
-                const dateStr = t.planned_date.split('T')[0];
+            if (t.plannedDate) {
+                const dateStr = t.plannedDate.split('T')[0];
                 activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
             }
         });
@@ -177,8 +178,8 @@ const Analytics = () => {
         };
         topics.forEach(t => {
             if (t.completed === 'True') data['Theory Done']++;
-            if (t.first_revision === 'True') data['1st Rev Done']++;
-            if (t.second_revision === 'True') data['2nd Rev Done']++;
+            if (t.firstRevision === 'TRUE') data['1st Rev Done']++;
+            if (t.secondRevision === 'TRUE') data['2nd Rev Done']++;
         });
         return [
             { name: 'Theory', value: data['Theory Done'], fill: COLORS.primary },
@@ -189,8 +190,8 @@ const Analytics = () => {
 
     // Exam Focus Stats
     const examStats = useMemo(() => {
-        const mcqDone = topics.filter(t => t.mcq_solving_date).length;
-        const pyqMarked = topics.filter(t => t.pyq_asked).length;
+        const mcqDone = topics.filter(t => t.mcqSolvingDate).length;
+        const pyqMarked = topics.filter(t => t.pyqAsked).length;
         return [
             { name: 'MCQ Solved', value: mcqDone, fill: COLORS.info },
             { name: 'PYQ Marked', value: pyqMarked, fill: COLORS.warning }
@@ -200,8 +201,8 @@ const Analytics = () => {
     // Forgotten Topics (Completed but no 1st Revision, sorted by planned_date ascending)
     const forgottenTopics = useMemo(() => {
         return topics
-            .filter(t => t.completed === 'True' && t.first_revision !== 'True')
-            .sort((a, b) => new Date(a.planned_date || 0) - new Date(b.planned_date || 0))
+            .filter(t => t.completed === 'True' && t.firstRevision !== 'TRUE')
+            .sort((a, b) => new Date(a.plannedDate || 0) - new Date(b.plannedDate || 0))
             .slice(0, 5);
     }, [topics]);
 
@@ -475,11 +476,11 @@ const Analytics = () => {
                             forgottenTopics.map((topic, i) => (
                                 <div key={topic.id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--primary)] transition-colors">
                                     <div className="min-w-0">
-                                        <div className="font-medium truncate">{topic.topic_name}</div>
+                                        <div className="font-medium truncate">{topic.topicName}</div>
                                         <div className="text-xs text-[var(--text-secondary)] flex gap-2 mt-1">
-                                            <span style={{ color: Utils.getSubjectColor(topic.subject_category) }}>{topic.subject_category}</span>
+                                            <span style={{ color: Utils.getSubjectColor(topic.subjectCategory) }}>{topic.subjectCategory}</span>
                                             <span>•</span>
-                                            <span>Completed: {topic.planned_date ? format(parseISO(topic.planned_date), 'MMM d, yyyy') : 'Unknown'}</span>
+                                            <span>Completed: {topic.plannedDate ? format(parseISO(topic.plannedDate), 'MMM d, yyyy') : 'Unknown'}</span>
                                         </div>
                                     </div>
                                     <div className="flex-shrink-0">

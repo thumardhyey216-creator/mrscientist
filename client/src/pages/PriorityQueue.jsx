@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { getTopics, markComplete } from '../services/api';
 import { Utils } from '../utils';
 import { Star, Filter, ExternalLink, Check, Clock, AlertTriangle, Zap } from 'lucide-react';
 
 const PriorityQueue = () => {
     const { lastUpdated } = useOutletContext();
+    const { user } = useAuth();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // 'all', 'high', 'moderate', 'low'
@@ -15,7 +17,7 @@ const PriorityQueue = () => {
         const loadData = async () => {
             setLoading(true);
             try {
-                const data = await getTopics();
+                const data = await getTopics(true, user?.id);
                 setTopics(data);
             } catch (error) {
                 console.error("Failed to load topics:", error);
@@ -23,8 +25,11 @@ const PriorityQueue = () => {
                 setLoading(false);
             }
         };
-        loadData();
-    }, [lastUpdated]);
+        
+        if (user) {
+            loadData();
+        }
+    }, [lastUpdated, user]);
 
     const handleMarkComplete = async (id) => {
         try {

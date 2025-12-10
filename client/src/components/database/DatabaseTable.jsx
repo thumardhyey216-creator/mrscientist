@@ -14,6 +14,8 @@ const DatabaseTable = ({ topics, onSelectTopic }) => {
                             <th className="p-4 font-semibold">Status</th>
                             <th className="p-4 font-semibold">Priority</th>
                             <th className="p-4 font-semibold">Planned Date</th>
+                            <th className="p-4 font-semibold">1st Revision</th>
+                            <th className="p-4 font-semibold">2nd Revision</th>
                             <th className="p-4 font-semibold">Actions</th>
                         </tr>
                     </thead>
@@ -47,6 +49,12 @@ const DatabaseTable = ({ topics, onSelectTopic }) => {
                                     </td>
                                     <td className="p-4 text-sm text-[var(--text-secondary)]">
                                         {Utils.formatDate(topic.plannedDate)}
+                                    </td>
+                                    <td className="p-4 text-sm text-[var(--text-secondary)]">
+                                        {Utils.formatDate(topic.firstRevisionDate)}
+                                    </td>
+                                    <td className="p-4 text-sm text-[var(--text-secondary)]">
+                                        {Utils.formatDate(topic.secondRevisionDate)}
                                     </td>
                                     <td className="p-4">
                                         <div className="flex gap-2">

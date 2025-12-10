@@ -24,6 +24,10 @@ class BaseAPI {
         return (Date.now() - this.cache.timestamp) < CONFIG.CACHE_DURATION;
     }
 
+    async initializeUser(userId) {
+        throw new Error('initializeUser not supported for this API');
+    }
+
     /**
      * Convert blocks to HTML
      * Reused from legacy code for compatibility
@@ -250,7 +254,8 @@ class NotionAPI extends BaseAPI {
     }
 
     async getRevisionInsights(topics) {
-        const response = await api.post('/revision-insights', { topics });
+        console.log('📡 NotionAPI: Requesting insights for', topics?.length, 'topics');
+        const response = await api.post('/api/revision-insights', { topics });
         return response.data;
     }
 
@@ -280,11 +285,12 @@ class SupabaseAPI extends BaseAPI {
         // Python backend likely uses the SUPABASE_URL/KEY from env or config.
     }
 
-    async queryDatabase(useCache = true) {
+    async queryDatabase(useCache = true, userId = null) {
+        // Cache key should probably include userId, but for now assuming single user session per load
         if (useCache && this.isCacheValid()) return this.cache.data;
 
         try {
-            const response = await api.get(`${this.baseUrl}/topics`);
+            const response = await api.get(`${this.baseUrl}/topics`, { params: { user_id: userId } });
             const transformed = this.transformTopics(response.data);
             this.cache = { data: transformed, timestamp: Date.now() };
             return transformed;
@@ -292,6 +298,12 @@ class SupabaseAPI extends BaseAPI {
             console.error('Supabase API Error:', error);
             throw error;
         }
+    }
+
+    async initializeUser(userId) {
+        const response = await api.post(`${this.baseUrl}/initialize`, { user_id: userId });
+        this.cache.timestamp = null; 
+        return response.data;
     }
 
     transformTopics(rawData) {
@@ -310,33 +322,107 @@ class SupabaseAPI extends BaseAPI {
             plannedDate: row.planned_date,
             mcqSolvingDate: row.mcq_solving_date,
             firstRevisionDate: row.first_revision_date,
+            secondRevisionDate: row.second_revision_date,
             completed: row.completed,
             firstRevision: row.first_revision,
             secondRevision: row.second_revision,
             timesRepeated: row.times_repeated,
-            pyqAsked: row.pyq_asked
+            pyqAsked: row.pyq_asked,
+            customData: row.custom_data
         }));
     }
 
-    async markComplete(id) { // Uses our custom ID, not Notion ID unless mapped
-        return this.updateTopic(id, { completed: 'True' });
+    async createTopic(data) {
+        // Build payload matching DB schema
+        const payload = this.buildPayload(data);
+        // Add non-mapped fields if present in data but not handled by buildPayload for creation
+        if (data.topic_name) payload.topic_name = data.topic_name;
+        if (data.topicName) payload.topic_name = data.topicName; // Support camelCase
+
+        if (data.subject_category) payload.subject_category = data.subject_category;
+        if (data.subjectCategory) payload.subject_category = data.subjectCategory;
+
+        if (data.priority) payload.priority = data.priority;
+
+        if (data.source) payload.source = data.source;
+
+        if (data.duration) payload.duration = data.duration;
+
+        if (data.planned_date) payload.planned_date = data.planned_date;
+        if (data.plannedDate) payload.planned_date = data.plannedDate;
+
+        if (data.custom_data) payload.custom_data = data.custom_data;
+        if (data.customData) payload.custom_data = data.customData;
+
+        if (data.parentId) payload.parent_id = data.parentId;
+        if (data.parent_id) payload.parent_id = data.parent_id;
+
+        if (data.user_id) payload.user_id = data.user_id;
+        if (data.userId) payload.user_id = data.userId;
+
+        const response = await api.post(`${this.baseUrl}/topics`, payload);
+        this.cache.timestamp = null;
+        return response.data;
     }
 
     async updateTopic(id, data) {
-        // Need payload builder
+        // Build payload matching DB schema
         const payload = this.buildPayload(data);
+
+        // Add non-mapped fields or override if provided
+        if (data.topic_name) payload.topic_name = data.topic_name;
+        if (data.topicName) payload.topic_name = data.topicName;
+
+        if (data.subject_category) payload.subject_category = data.subject_category;
+        if (data.subjectCategory) payload.subject_category = data.subjectCategory;
+
+        if (data.priority) payload.priority = data.priority;
+
+        if (data.source) payload.source = data.source;
+
+        if (data.duration) payload.duration = data.duration;
+
+        if (data.planned_date) payload.planned_date = data.planned_date;
+        if (data.plannedDate) payload.planned_date = data.plannedDate;
+
+        if (data.mcq_solving_date) payload.mcq_solving_date = data.mcq_solving_date;
+        if (data.mcqSolvingDate) payload.mcq_solving_date = data.mcqSolvingDate;
+
+        if (data.first_revision_date) payload.first_revision_date = data.first_revision_date;
+        if (data.firstRevisionDate) payload.first_revision_date = data.firstRevisionDate;
+
+        if (data.pyq_asked) payload.pyq_asked = data.pyq_asked;
+        if (data.pyqAsked) payload.pyq_asked = data.pyqAsked;
+
+        if (data.notes) payload.notes = data.notes;
+
+        if (data.custom_data) payload.custom_data = data.custom_data;
+        if (data.customData) payload.custom_data = data.customData;
+
+        // If data contains keys that are likely snake_case already and not covered above, pass them?
+        // buildPayload covers completed, revisions.
+
         const response = await api.patch(`${this.baseUrl}/topics/${id}`, payload);
         this.cache.timestamp = null;
         return response.data;
     }
 
+    async deleteTopic(id) {
+        const response = await api.delete(`${this.baseUrl}/topics/${id}`);
+        this.cache.timestamp = null;
+        return response.data;
+    }
+
     buildPayload(data) {
+        // Helper to convert internal camelCase model to snake_case DB columns if needed
+        // For now, most inputs from Database.jsx are already snake_case or handled directly.
+        // This is kept for compatibility with markComplete/markRevisionComplete which pass camelCase wrappers.
         const payload = {};
-        // Mapping... simplified for brevity, assume similar to legacy
-        if (data.completed) payload.completed = data.completed;
-        if (data.firstRevision) payload.first_revision = data.firstRevision; // Map to DB column
+        if (data.completed !== undefined) payload.completed = data.completed;
+        if (data.firstRevision) payload.first_revision = data.firstRevision;
         if (data.firstRevisionDate) payload.first_revision_date = data.firstRevisionDate;
         if (data.secondRevision) payload.second_revision = data.secondRevision;
+        if (data.secondRevisionDate) payload.second_revision_date = data.secondRevisionDate;
         return payload;
     }
 
@@ -346,9 +432,6 @@ class SupabaseAPI extends BaseAPI {
     }
 
     async updateBlock(blockId, blockType, newContent) {
-        // Construct payload. Note: Supabase backend proxy expects Notion format usually if it forwards to Notion
-        // Or if it updates local JSON, it needs to match.
-        // Assuming parity with NotionAPI for the proxy.
         const payload = {
             [blockType]: {
                 rich_text: [{
@@ -360,8 +443,71 @@ class SupabaseAPI extends BaseAPI {
         return response.data;
     }
 
+    async getTopic(id) {
+        const response = await api.get(`${this.baseUrl}/topics/${id}`);
+        // Transform snake_case to camelCase
+        const row = response.data;
+        if (!row) return null;
+        return {
+            id: row.id,
+            parentId: row.parent_id,
+            notionId: row.notion_id,
+            topicName: row.topic_name,
+            subjectCategory: row.subject_category,
+            priority: row.priority,
+            source: row.source,
+            duration: row.duration,
+            plannedDate: row.planned_date,
+            mcqSolvingDate: row.mcq_solving_date,
+            firstRevisionDate: row.first_revision_date,
+            completed: row.completed,
+            firstRevision: row.first_revision,
+            secondRevision: row.second_revision,
+            notes: row.notes,
+            pyqAsked: row.pyq_asked,
+            customData: row.custom_data
+        };
+    }
+
+    async getTopicChildren(id) {
+        const response = await api.get(`${this.baseUrl}/topics/${id}/children`);
+        return response.data.map(row => ({
+            id: row.id,
+            topicName: row.topic_name,
+            subjectCategory: row.subject_category,
+            // Add other fields if needed for list view
+        }));
+    }
+
+    async getTopic(id) {
+        const response = await api.get(`${this.baseUrl}/topics/${id}`);
+        // Transform single topic
+        const row = response.data;
+        return {
+            id: row.id,
+            parentId: row.parent_id,
+            notionId: row.notion_id,
+            topicName: row.topic_name,
+            subjectCategory: row.subject_category,
+            priority: row.priority,
+            source: row.source,
+            duration: row.duration,
+            plannedDate: row.planned_date,
+            mcqSolvingDate: row.mcq_solving_date,
+            firstRevisionDate: row.first_revision_date,
+            completed: row.completed,
+            firstRevision: row.first_revision,
+            secondRevision: row.second_revision,
+            notes: row.notes,
+            pyqAsked: row.pyq_asked,
+            customData: row.custom_data
+        };
+    }
+
     async getRevisionInsights(topics) {
-        const response = await api.post('/revision-insights', { topics });
+        console.log('📡 SupabaseAPI: Requesting insights for', topics?.length, 'topics');
+        const response = await api.post('/api/revision-insights', { topics });
+        console.log('📡 SupabaseAPI: Received insights:', response.data);
         return response.data;
     }
 
@@ -369,13 +515,61 @@ class SupabaseAPI extends BaseAPI {
         const today = new Date().toISOString().split('T')[0];
         const data = {};
         if (revisionNumber === 1) {
-            data.firstRevision = 'Done';
-            data.firstRevisionDate = today;
+            data.first_revision = 'TRUE';
+            data.first_revision_date = today;
         } else if (revisionNumber === 2) {
-            data.secondRevision = 'Done';
+            data.second_revision = 'TRUE';
+            data.second_revision_date = today;
         }
         return this.updateTopic(id, data);
     }
+
+    // Schema & Views
+    async getCustomColumns() {
+        // In python backend this was getting schema via RPC or just returning formatted list.
+        // Our node backend has /api/supabase/schema which calls get_table_info.
+        // Wait, Database.jsx expects "custom_column_definitions" table rows.
+        // The Node backend didn't implement a direct "get custom definitions" route, 
+        // but let's check index.js.
+        // Node index.js doesn't have a route for 'custom_column_definitions' table select.
+        // We should add it to index.js or mock it. 
+        // Actually, let's implement a generic query or specific route in Node.
+        // For now, let's assume we will add /api/supabase/custom-columns to Node.js.
+        // Or re-use /api/supabase/schema/column for management.
+
+        // Let's try to fetch from a new endpoint we will create.
+        const response = await api.get(`${this.baseUrl}/custom-columns`);
+        return response.data;
+    }
+
+    async addCustomColumn(columnData) {
+        const response = await api.post(`${this.baseUrl}/custom-columns`, columnData);
+        return response.data;
+    }
+
+    async getDatabaseViews() {
+        const response = await api.get(`${this.baseUrl}/views`);
+        return response.data;
+    }
+
+    async saveDatabaseView(viewData) {
+        const response = await api.post(`${this.baseUrl}/views`, viewData);
+        return response.data;
+    }
+
+    async generateSchedule(params) {
+        // params: { user_id, startDate, topicsPerDay, strategy }
+        const response = await api.post('/api/generate-schedule', params);
+        this.cache.timestamp = null; // Invalidate cache
+        return response.data;
+    }
+
+    async clearSchedule(userId) {
+        const response = await api.post('/api/clear-schedule', { user_id: userId });
+        this.cache.timestamp = null; // Invalidate cache
+        return response.data;
+    }
+
 }
 
 // Select API based on config
@@ -384,7 +578,8 @@ const backendAPI = (CONFIG.DATA_SOURCE === 'supabase' || CONFIG.DATA_SOURCE === 
     : new NotionAPI();
 
 // Export accessors
-export const getTopics = (useCache) => backendAPI.queryDatabase(useCache);
+export const getTopics = (useCache, userId) => backendAPI.queryDatabase(useCache, userId);
+export const initializeUser = (userId) => backendAPI.initializeUser(userId);
 export const markComplete = (id) => backendAPI.markComplete(id);
 export const getPageBlocks = (pageId) => backendAPI.getPageBlocks(pageId);
 export const updateBlock = (blockId, blockType, content) => backendAPI.updateBlock(blockId, blockType, content);
@@ -392,9 +587,21 @@ export const markRevisionComplete = (id, revNum) => backendAPI.markRevisionCompl
 export const getRevisionInsights = (topics) => backendAPI.getRevisionInsights(topics);
 export const blocksToHtml = (blocks) => backendAPI.blocksToHtml(blocks);
 
+export const createTopic = (data) => backendAPI.createTopic(data);
+export const updateTopic = (id, data) => backendAPI.updateTopic(id, data);
+export const deleteTopic = (id) => backendAPI.deleteTopic(id);
+export const getTopic = (id) => backendAPI.getTopic(id);
+export const getTopicChildren = (id) => backendAPI.getTopicChildren(id);
+
+export const getCustomColumns = () => backendAPI.getCustomColumns();
+export const addCustomColumn = (data) => backendAPI.addCustomColumn(data);
+export const getDatabaseViews = () => backendAPI.getDatabaseViews();
+export const saveDatabaseView = (data) => backendAPI.saveDatabaseView(data);
+export const generateSchedule = (params) => backendAPI.generateSchedule(params);
+export const clearSchedule = (userId) => backendAPI.clearSchedule(userId);
 
 export const askAI = async (prompt) => {
-    const response = await api.post('/ask-ai', { prompt });
+    const response = await api.post('/api/ask-ai', { prompt });
     return response.data;
 };
 
@@ -404,4 +611,3 @@ export const syncFromNotion = async () => {
 };
 
 export default backendAPI;
-

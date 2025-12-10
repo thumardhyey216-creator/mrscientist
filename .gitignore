@@ -2,7 +2,6 @@
 node_modules/
 dist/
 build/
-.env
 .DS_Store
 
 # Python
@@ -12,3 +11,10 @@ __pycache__/
 venv/
 .venv/
 *.db
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

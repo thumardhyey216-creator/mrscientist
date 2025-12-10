@@ -13,7 +13,7 @@ export const CONFIG = {
     // Supabase Configuration
     // Get your anon key from: https://app.supabase.com/project/nqpfjsduwxyrwclpssig/settings/api
     SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://nqpfjsduwxyrwclpssig.supabase.co',
-    SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5xcGZqc2R1d3h5cndjbHBzc2lnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyMTc0NDYsImV4cCI6MjA4MDc5MzQ0Nn0.T3Ejz23t9P8lvIp2b_V9q4RJyATmThJWCbmWV1XeHFA',
 
     // Notion API credentials
     NOTION_TOKEN: import.meta.env.VITE_NOTION_TOKEN,

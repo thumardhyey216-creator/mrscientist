@@ -1,8 +1,8 @@
+@import './styles.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import './styles.css';
 
 /* Minimal body styles - mostly handled by styles.css and Tailwind */
 body {

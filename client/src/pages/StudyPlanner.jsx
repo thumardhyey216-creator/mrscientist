@@ -1,29 +1,48 @@
+
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
-import { CONFIG } from '../config';
-import { getTopics } from '../services/api';
-import { Utils } from '../utils';
-import { Calendar, ChevronLeft, ChevronRight, Clock, Target, CheckCircle2, Plus, Edit } from 'lucide-react';
-
-const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+import { useAuth } from '../context/AuthContext';
+import { getTopics, generateSchedule, clearSchedule } from '../services/api';
+import { useNavigate } from 'react-router-dom';
+import { 
+    format, startOfMonth, endOfMonth, eachDayOfInterval, 
+    isSameDay, addMonths, subMonths, isSameMonth, 
+    startOfWeek, endOfWeek 
+} from 'date-fns';
+import { 
+    Calendar as CalendarIcon, ChevronLeft, ChevronRight, 
+    Wand2, Settings, BookOpen, CheckCircle2, RotateCcw, Target, Loader2, X, Trash2, MessageSquare 
+} from 'lucide-react';
+import ChatInterface from '../components/chat/ChatInterface';
 
 const StudyPlanner = () => {
+    const navigate = useNavigate();
     const { lastUpdated } = useOutletContext();
+    const { user } = useAuth();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [editingTopic, setEditingTopic] = useState(null);
-    const [newDate, setNewDate] = useState('');
+    const [showGenerator, setShowGenerator] = useState(false);
+    
+    // Generator State
+    const [genConfig, setGenConfig] = useState({
+        startDate: new Date().toISOString().split('T')[0],
+        topicsPerDay: 5,
+        dailyHours: 4,
+        preference: 'Morning', // Morning, Night
+        strategy: 'priority', // priority, alphabetical, custom
+        prompt: ''
+    });
+    const [generating, setGenerating] = useState(false);
 
     useEffect(() => {
-        loadData();
-    }, [lastUpdated]);
+        if (user) loadData();
+    }, [user, lastUpdated]);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const data = await getTopics();
+            const data = await getTopics(true, user?.id);
             setTopics(data);
         } catch (error) {
             console.error("Failed to load topics:", error);
@@ -32,282 +51,433 @@ const StudyPlanner = () => {
         }
     };
 
-    const updateTopicDate = async (topicId, newPlannedDate) => {
+    const handleGenerate = async () => {
+        setGenerating(true);
         try {
-            const { error } = await supabase
-                .from('topics')
-                .update({ planned_date: newPlannedDate })
-                .eq('id', topicId);
-
-            if (error) throw error;
-
-            // Update local state
-            setTopics(prev => prev.map(t =>
-                t.id === topicId ? { ...t, plannedDate: newPlannedDate } : t
-            ));
-            setEditingTopic(null);
-        } catch (err) {
-            console.error('Error updating date:', err);
-            alert('Failed to update date');
+            await generateSchedule({
+                user_id: user.id,
+                startDate: genConfig.startDate,
+                topicsPerDay: parseInt(genConfig.topicsPerDay),
+                dailyHours: parseFloat(genConfig.dailyHours),
+                preference: genConfig.preference,
+                strategy: genConfig.strategy,
+                prompt: genConfig.prompt
+            });
+            setShowGenerator(false);
+            await loadData(); // Reload to see new dates
+        } catch (error) {
+            console.error("Failed to generate schedule:", error);
+            alert("Failed to generate schedule: " + error.message);
+        } finally {
+            setGenerating(false);
         }
     };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <div className="spinner"></div>
-            </div>
-        );
-    }
+    // Calendar Logic
+    const monthStart = startOfMonth(currentDate);
+    const monthEnd = endOfMonth(monthStart);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(monthEnd);
+    const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
-    // Get current week dates
-    const getWeekDates = (date) => {
-        const curr = new Date(date);
-        const first = curr.getDate() - curr.getDay();
-        const dates = [];
-        for (let i = 0; i < 7; i++) {
-            const day = new Date(curr);
-            day.setDate(first + i);
-            dates.push(new Date(day));
-        }
-        return dates;
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [selectedEvents, setSelectedEvents] = useState([]);
+    const [showDayModal, setShowDayModal] = useState(false);
+    const [showChat, setShowChat] = useState(false);
+
+    const handleDayClick = (date, events) => {
+        setSelectedDate(date);
+        setSelectedEvents(events);
+        setShowDayModal(true);
     };
 
-    const weekDates = getWeekDates(currentDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const getEventsForDay = (date) => {
+        const dayStr = format(date, 'yyyy-MM-dd');
+        const events = [];
 
-    // Get topics for a specific date
-    const getTopicsForDate = (date) => {
-        const dateStr = date.toISOString().split('T')[0];
-        return topics.filter(t => {
-            if (!t.plannedDate) return false;
-            return t.plannedDate.split('T')[0] === dateStr;
+        topics.forEach(t => {
+            // Planned Study
+            if (t.plannedDate && t.plannedDate.startsWith(dayStr)) {
+                events.push({ type: 'study', topic: t });
+            }
+            // MCQ
+            if (t.mcqSolvingDate && t.mcqSolvingDate.startsWith(dayStr)) {
+                events.push({ type: 'mcq', topic: t });
+            }
+            // Rev 1
+            if (t.firstRevisionDate && t.firstRevisionDate.startsWith(dayStr)) {
+                events.push({ type: 'rev1', topic: t });
+            }
+            // Rev 2
+            if (t.secondRevisionDate && t.secondRevisionDate.startsWith(dayStr)) {
+                events.push({ type: 'rev2', topic: t });
+            }
         });
+        return events;
     };
 
-    // Navigation
-    const navigateWeek = (direction) => {
-        const newDate = new Date(currentDate);
-        newDate.setDate(newDate.getDate() + (direction * 7));
-        setCurrentDate(newDate);
+    const handleClearSchedule = async () => {
+        if (!user || !user.id) {
+            alert("User not authenticated");
+            return;
+        }
+        if (!window.confirm("Are you sure you want to clear your entire schedule? This cannot be undone.")) {
+            return;
+        }
+        setLoading(true);
+        try {
+            await clearSchedule(user.id);
+            await loadData();
+        } catch (error) {
+            console.error("Failed to clear schedule:", error);
+            const errMsg = error.response?.data?.error || error.message;
+            alert(`Failed to clear schedule: ${errMsg}`);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    // Stats for the week
-    const weekTopics = weekDates.flatMap(d => getTopicsForDate(d));
-    const weekCompleted = weekTopics.filter(t => t.completed === 'True').length;
-    const weekTotal = weekTopics.length;
-
-    // Upcoming topics
-    const upcomingTopics = topics
-        .filter(t => {
-            if (!t.plannedDate || t.completed === 'True') return false;
-            const plannedDate = new Date(t.plannedDate);
-            const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-            return plannedDate >= today && plannedDate <= weekFromNow;
-        })
-        .sort((a, b) => new Date(a.plannedDate) - new Date(b.plannedDate))
-        .slice(0, 10);
+    const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+    const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+    const resetToday = () => setCurrentDate(new Date());
 
     return (
-        <div className="space-y-6 animate-fade-in pb-20">
+        <div className="space-y-6">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold flex items-center gap-2">
-                        <Calendar className="text-[var(--primary)]" />
+                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
                         Study Planner
-                    </h2>
-                    <p className="text-[var(--text-secondary)]">Plan and track your daily study schedule. Click topics to reschedule.</p>
+                    </h1>
+                    <p className="text-[var(--text-secondary)] mt-1">
+                        AI-powered scheduling and calendar view
+                    </p>
                 </div>
+                
+                <div className="flex items-center gap-3">
+                    <button 
+                        onClick={() => setShowChat(!showChat)}
+                        className={`btn flex items-center gap-2 ${showChat ? 'btn-primary' : 'btn-secondary'}`}
+                        title="AI Assistant"
+                    >
+                        <MessageSquare size={18} />
+                        <span className="hidden md:inline">AI Assistant</span>
+                    </button>
+                    
+                    <button 
+                        onClick={handleClearSchedule}
+                        className="btn btn-danger flex items-center gap-2 text-red-400 hover:bg-red-500/10 border border-red-500/30"
+                        title="Clear Schedule"
+                    >
+                        <Trash2 size={18} />
+                    </button>
 
-                {/* Week Navigation */}
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigateWeek(-1)}
-                        className="btn btn-secondary btn-sm"
+                    <button 
+                        onClick={() => setShowGenerator(true)}
+                        className="btn btn-primary flex items-center gap-2"
                     >
-                        <ChevronLeft size={16} />
-                    </button>
-                    <span className="font-medium min-w-[200px] text-center">
-                        {weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </span>
-                    <button
-                        onClick={() => navigateWeek(1)}
-                        className="btn btn-secondary btn-sm"
-                    >
-                        <ChevronRight size={16} />
-                    </button>
-                    <button
-                        onClick={() => setCurrentDate(new Date())}
-                        className="btn btn-primary btn-sm ml-2"
-                    >
-                        Today
+                        <Wand2 size={18} />
+                        <span>Generate Schedule</span>
                     </button>
                 </div>
             </div>
 
-            {/* Week Stats */}
-            <div className="grid grid-cols-3 gap-4">
-                <div className="glass-card p-4 text-center">
-                    <Target className="mx-auto mb-2 text-[var(--primary)]" size={24} />
-                    <div className="text-2xl font-bold">{weekTotal}</div>
-                    <div className="text-sm text-[var(--text-secondary)]">Planned This Week</div>
-                </div>
-                <div className="glass-card p-4 text-center">
-                    <CheckCircle2 className="mx-auto mb-2 text-[var(--success)]" size={24} />
-                    <div className="text-2xl font-bold">{weekCompleted}</div>
-                    <div className="text-sm text-[var(--text-secondary)]">Completed</div>
-                </div>
-                <div className="glass-card p-4 text-center">
-                    <Clock className="mx-auto mb-2 text-[var(--warning)]" size={24} />
-                    <div className="text-2xl font-bold">{weekTotal - weekCompleted}</div>
-                    <div className="text-sm text-[var(--text-secondary)]">Remaining</div>
-                </div>
-            </div>
-
-            {/* Week Calendar View */}
-            <div className="glass-card p-4 overflow-x-auto">
-                <div className="grid grid-cols-7 gap-2 min-w-[700px]">
-                    {weekDates.map((date, idx) => {
-                        const dayTopics = getTopicsForDate(date);
-                        const isToday = date.toDateString() === today.toDateString();
-                        const isPast = date < today;
-
-                        return (
-                            <div
-                                key={idx}
-                                className={`rounded-lg p-3 min-h-[150px] transition-all ${isToday
-                                    ? 'bg-[var(--primary)] bg-opacity-20 border-2 border-[var(--primary)]'
-                                    : isPast
-                                        ? 'bg-[var(--bg-secondary)] opacity-60'
-                                        : 'bg-[var(--bg-secondary)]'
-                                    }`}
-                            >
-                                <div className="text-center mb-2">
-                                    <div className="text-xs text-[var(--text-secondary)] uppercase">
-                                        {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                                    </div>
-                                    <div className={`text-lg font-bold ${isToday ? 'text-[var(--primary)]' : ''}`}>
-                                        {date.getDate()}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-1">
-                                    {dayTopics.slice(0, 3).map(topic => (
-                                        <button
-                                            key={topic.id}
-                                            onClick={() => {
-                                                setEditingTopic(topic);
-                                                setNewDate(topic.plannedDate?.split('T')[0] || '');
-                                            }}
-                                            className={`w-full text-xs p-1.5 rounded truncate text-left transition-all hover:scale-105 ${topic.completed === 'True'
-                                                ? 'bg-[var(--success)] bg-opacity-20 text-[var(--success)] line-through'
-                                                : 'bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]'
-                                                }`}
-                                            title="Click to reschedule"
-                                        >
-                                            {topic.topicName}
-                                        </button>
-                                    ))}
-                                    {dayTopics.length > 3 && (
-                                        <div className="text-xs text-[var(--text-tertiary)] text-center">
-                                            +{dayTopics.length - 3} more
-                                        </div>
-                                    )}
-                                    {dayTopics.length === 0 && (
-                                        <div className="text-xs text-[var(--text-tertiary)] text-center py-2">
-                                            No topics
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Upcoming Topics List */}
-            <div className="glass-card p-6">
-                <h3 className="text-lg font-semibold mb-4">Upcoming Study Topics</h3>
-                {upcomingTopics.length === 0 ? (
-                    <div className="text-center py-8 text-[var(--text-tertiary)]">
-                        <div className="text-3xl mb-2">📅</div>
-                        <p>No upcoming topics in the next 7 days</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {upcomingTopics.map(topic => (
-                            <button
-                                key={topic.id}
-                                onClick={() => {
-                                    setEditingTopic(topic);
-                                    setNewDate(topic.plannedDate?.split('T')[0] || '');
-                                }}
-                                className="w-full flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-lg hover:bg-[var(--bg-card-hover)] transition-colors group"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <span
-                                        className="w-2 h-8 rounded-full"
-                                        style={{ backgroundColor: Utils.getSubjectColor(topic.subjectCategory) }}
-                                    />
-                                    <div className="text-left">
-                                        <div className="font-medium">{topic.topicName}</div>
-                                        <div className="text-xs text-[var(--text-secondary)]">
-                                            {topic.subjectCategory}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="text-right">
-                                        <div className="text-sm font-medium">
-                                            {Utils.formatDate(topic.plannedDate)}
-                                        </div>
-                                        <div className="text-xs text-[var(--text-secondary)]">
-                                            {Utils.formatDuration(topic.duration)}
-                                        </div>
-                                    </div>
-                                    <Edit size={16} className="opacity-0 group-hover:opacity-100 transition-opacity text-[var(--primary)]" />
-                                </div>
+            <div className="flex gap-6 h-[calc(100vh-180px)]">
+                {/* Calendar Section */}
+                <div className={`flex-1 flex flex-col gap-6 overflow-y-auto custom-scrollbar transition-all duration-300 ${showChat ? 'w-2/3' : 'w-full'}`}>
+                    {/* Calendar Controls */}
+                    <div className="glass-panel p-4 flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-4">
+                            <button onClick={prevMonth} className="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors">
+                                <ChevronLeft size={20} />
                             </button>
-                        ))}
+                            <h2 className="text-xl font-bold min-w-[150px] text-center">
+                                {format(currentDate, 'MMMM yyyy')}
+                            </h2>
+                            <button onClick={nextMonth} className="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors">
+                                <ChevronRight size={20} />
+                            </button>
+                        </div>
+                        <button onClick={resetToday} className="text-sm text-[var(--primary)] hover:underline">
+                            Today
+                        </button>
+                    </div>
+
+                    {/* Calendar Grid */}
+                    <div className="glass-panel p-6 flex-1 overflow-y-auto">
+                        {/* Days Header */}
+                        <div className="grid grid-cols-7 mb-4">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                <div key={day} className="text-center text-[var(--text-tertiary)] text-sm font-medium py-2">
+                                    {day}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Days Grid */}
+                        <div className="grid grid-cols-7 gap-2">
+                            {calendarDays.map((day, idx) => {
+                                const isCurrentMonth = isSameMonth(day, monthStart);
+                                const isToday = isSameDay(day, new Date());
+                                const events = getEventsForDay(day);
+                                
+                                return (
+                                    <div 
+                                        key={day.toISOString()} 
+                                        onClick={() => handleDayClick(day, events)}
+                                        className={`
+                                            min-h-[100px] p-2 rounded-xl border transition-all cursor-pointer hover:bg-[var(--bg-hover)]
+                                            ${isCurrentMonth ? 'bg-[var(--bg-secondary)]/50 border-[var(--border-primary)]' : 'bg-[var(--bg-secondary)]/10 border-transparent opacity-50'}
+                                            ${isToday ? 'ring-2 ring-[var(--primary)]' : ''}
+                                        `}
+                                    >
+                                        <div className="text-right text-xs mb-2 text-[var(--text-tertiary)]">
+                                            {format(day, 'd')}
+                                        </div>
+                                        
+                                        <div className="space-y-1 overflow-y-auto max-h-[80px] custom-scrollbar">
+                                            {events.slice(0, 3).map((evt, i) => (
+                                                <div key={i} className={`
+                                                    text-[10px] px-1.5 py-0.5 rounded truncate flex items-center gap-1
+                                                    ${evt.type === 'study' ? 'bg-blue-500/20 text-blue-300' : 
+                                                      evt.type === 'mcq' ? 'bg-orange-500/20 text-orange-300' : 
+                                                      evt.type === 'rev1' ? 'bg-purple-500/20 text-purple-300' :
+                                                      'bg-green-500/20 text-green-300'}
+                                                `}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0
+                                                        ${evt.type === 'study' ? 'bg-blue-400' : 
+                                                          evt.type === 'mcq' ? 'bg-orange-400' :
+                                                          evt.type === 'rev1' ? 'bg-purple-400' :
+                                                          'bg-green-400'}
+                                                    `} />
+                                                    {evt.topic.topicName}
+                                                </div>
+                                            ))}
+                                            {events.length > 3 && (
+                                                <div className="text-[10px] text-center text-[var(--text-tertiary)]">
+                                                    +{events.length - 3} more
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* AI Chat Sidebar */}
+                {showChat && (
+                    <div className="w-[350px] flex-shrink-0 animate-slide-in-right h-full">
+                        <div className="h-full flex flex-col glass-panel overflow-hidden">
+                            <div className="p-4 border-b border-[var(--border-primary)] flex items-center justify-between bg-[var(--bg-secondary)]/50">
+                                <div className="flex items-center gap-2">
+                                    <MessageSquare size={18} className="text-[var(--primary)]" />
+                                    <h3 className="font-bold">AI Assistant</h3>
+                                </div>
+                                <button onClick={() => setShowChat(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-hidden p-0">
+                                <ChatInterface />
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* Edit Date Modal */}
-            {editingTopic && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setEditingTopic(null)}>
-                    <div className="glass-panel p-6 rounded-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-lg font-bold mb-4">Reschedule Topic</h3>
+            {/* Generator Modal */}
+            {showGenerator && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="glass-card w-full max-w-md p-6 space-y-6">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xl font-bold text-[var(--text-primary)]">Generate Schedule</h3>
+                            <button onClick={() => setShowGenerator(false)} className="text-[var(--text-tertiary)] hover:text-white">
+                                ✕
+                            </button>
+                        </div>
+
                         <div className="space-y-4">
                             <div>
-                                <label className="text-sm text-[var(--text-secondary)] block mb-1">Topic</label>
-                                <div className="font-medium">{editingTopic.topicName}</div>
-                            </div>
-                            <div>
-                                <label className="text-sm text-[var(--text-secondary)] block mb-2">New Date</label>
-                                <input
-                                    type="date"
-                                    value={newDate}
-                                    onChange={(e) => setNewDate(e.target.value)}
-                                    className="w-full p-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg focus:outline-none focus:border-[var(--primary)]"
+                                <label className="block text-sm text-[var(--text-secondary)] mb-1">Start Date</label>
+                                <input 
+                                    type="date" 
+                                    className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-2 text-[var(--text-primary)]"
+                                    value={genConfig.startDate}
+                                    onChange={(e) => setGenConfig({...genConfig, startDate: e.target.value})}
                                 />
                             </div>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => updateTopicDate(editingTopic.id, newDate)}
-                                    className="btn btn-primary flex-1"
-                                >
-                                    Update
-                                </button>
-                                <button
-                                    onClick={() => setEditingTopic(null)}
-                                    className="btn btn-secondary flex-1"
-                                >
-                                    Cancel
-                                </button>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm text-[var(--text-secondary)] mb-1">Daily Hours</label>
+                                    <input 
+                                        type="number" 
+                                        min="1" max="24"
+                                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-2 text-[var(--text-primary)]"
+                                        value={genConfig.dailyHours}
+                                        onChange={(e) => setGenConfig({...genConfig, dailyHours: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-[var(--text-secondary)] mb-1">Preference</label>
+                                    <select 
+                                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-2 text-[var(--text-primary)]"
+                                        value={genConfig.preference}
+                                        onChange={(e) => setGenConfig({...genConfig, preference: e.target.value})}
+                                    >
+                                        <option value="Morning">Morning</option>
+                                        <option value="Night">Night</option>
+                                        <option value="Any">Any Time</option>
+                                    </select>
+                                </div>
                             </div>
+                            
+                            <div>
+                                <label className="block text-sm text-[var(--text-secondary)] mb-1">Max Topics Per Day (Cap)</label>
+                                <input 
+                                    type="number" 
+                                    min="1" max="20"
+                                    className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-2 text-[var(--text-primary)]"
+                                    value={genConfig.topicsPerDay}
+                                    onChange={(e) => setGenConfig({...genConfig, topicsPerDay: e.target.value})}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm text-[var(--text-secondary)] mb-1">Strategy</label>
+                                <select 
+                                    className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg p-2 text-[var(--text-primary)]"
+                                    value={genConfig.strategy}
+                                    onChange={(e) => setGenConfig({...genConfig, strategy: e.target.value})}
+                                >
+                                    <option value="priority">High Yield First (Recommended)</option>
+                                    <option value="alphabetical">Alphabetical / Subject Wise</option>
+                                    <option value="custom">AI Custom Strategy</option>
+                                </select>
+                            </div>
+
+                            {genConfig.strategy === 'custom' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
+                                        Custom Instructions
+                                    </label>
+                                    <textarea
+                                        value={genConfig.prompt}
+                                        onChange={(e) => setGenConfig({ ...genConfig, prompt: e.target.value })}
+                                        placeholder="E.g., 'Focus on Anatomy first, then Physiology. Prioritize High yield topics.'"
+                                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] h-24 resize-none"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button 
+                                onClick={() => setShowGenerator(false)}
+                                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleGenerate}
+                                disabled={generating}
+                                className="flex-1 btn btn-primary flex items-center justify-center gap-2"
+                            >
+                                {generating ? <Loader2 className="animate-spin" size={18} /> : <Wand2 size={18} />}
+                                <span>Generate</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Day Details Modal */}
+            {showDayModal && selectedDate && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="glass-panel w-full max-w-lg max-h-[80vh] flex flex-col">
+                        <div className="p-4 border-b border-[var(--border-primary)] flex items-center justify-between">
+                            <div>
+                                <h3 className="text-xl font-bold">{format(selectedDate, 'EEEE, MMMM do')}</h3>
+                                <p className="text-[var(--text-secondary)] text-sm">{selectedEvents.length} Tasks Scheduled</p>
+                            </div>
+                            <button 
+                                onClick={() => setShowDayModal(false)}
+                                className="p-2 hover:bg-[var(--bg-hover)] rounded-lg"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="p-4 overflow-y-auto custom-scrollbar space-y-3">
+                            {selectedEvents.length === 0 ? (
+                                <div className="text-center py-8 text-[var(--text-tertiary)]">
+                                    <div className="flex justify-center mb-2">
+                                        <CalendarIcon size={40} className="opacity-20" />
+                                    </div>
+                                    <p>No tasks scheduled for this day.</p>
+                                </div>
+                            ) : (
+                                selectedEvents.map((evt, idx) => (
+                                    <div 
+                                        key={idx}
+                                        onClick={() => navigate(`/topic/${evt.topic.id}`)}
+                                        className={`
+                                            p-3 rounded-xl border cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99]
+                                            ${evt.type === 'study' ? 'bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20' : 
+                                              evt.type === 'mcq' ? 'bg-orange-500/10 border-orange-500/30 hover:bg-orange-500/20' :
+                                              evt.type === 'rev1' ? 'bg-purple-500/10 border-purple-500/30 hover:bg-purple-500/20' :
+                                              'bg-green-500/10 border-green-500/30 hover:bg-green-500/20'}
+                                        `}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`
+                                                w-10 h-10 rounded-lg flex items-center justify-center text-lg shadow-inner
+                                                ${evt.type === 'study' ? 'bg-blue-500/20 text-blue-400' : 
+                                                  evt.type === 'mcq' ? 'bg-orange-500/20 text-orange-400' :
+                                                  evt.type === 'rev1' ? 'bg-purple-500/20 text-purple-400' :
+                                                  'bg-green-500/20 text-green-400'}
+                                            `}>
+                                                {evt.type === 'study' ? <BookOpen size={20} /> :
+                                                 evt.type === 'mcq' ? <Target size={20} /> :
+                                                 evt.type === 'rev1' ? <RotateCcw size={20} /> :
+                                                 <CheckCircle2 size={20} />}
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between mb-0.5">
+                                                    <span className={`text-xs font-bold uppercase tracking-wider
+                                                        ${evt.type === 'study' ? 'text-blue-400' : 
+                                                          evt.type === 'mcq' ? 'text-orange-400' :
+                                                          evt.type === 'rev1' ? 'text-purple-400' :
+                                                          'text-green-400'}
+                                                    `}>
+                                                        {evt.type === 'study' ? 'New Topic' :
+                                                         evt.type === 'mcq' ? 'Solve MCQs' :
+                                                         evt.type === 'rev1' ? '1st Revision' :
+                                                         '2nd Revision'}
+                                                    </span>
+                                                    <span className="text-[10px] bg-[var(--bg-primary)] px-2 py-0.5 rounded-full text-[var(--text-secondary)] border border-[var(--border-secondary)]">
+                                                        {evt.topic.subjectCategory || 'General'}
+                                                    </span>
+                                                    {evt.topic.customData?.time_preference && evt.topic.customData.time_preference !== 'Any' && (
+                                                        <span className={`text-[10px] ml-1 px-2 py-0.5 rounded-full border ${
+                                                            evt.topic.customData.time_preference === 'Morning' 
+                                                                ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' 
+                                                                : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                                                        }`}>
+                                                            {evt.topic.customData.time_preference === 'Morning' ? '☀️ Morning' : '🌙 Night'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <h4 className="font-medium text-[var(--text-primary)]">
+                                                    {evt.topic.topicName}
+                                                </h4>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { getTopics, markComplete } from '../services/api';
 import { Utils } from '../utils';
 import StatCard from '../components/dashboard/StatCard';
@@ -9,6 +10,7 @@ import { BookOpen, CheckCircle, Clock, Calendar } from 'lucide-react';
 
 const Dashboard = () => {
     const { lastUpdated } = useOutletContext();
+    const { user } = useAuth();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedTopic, setSelectedTopic] = useState(null);
@@ -16,7 +18,7 @@ const Dashboard = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const data = await getTopics();
+            const data = await getTopics(true, user?.id);
             setTopics(data);
         } catch (error) {
             console.error("Failed to load topics:", error);
@@ -26,8 +28,10 @@ const Dashboard = () => {
     };
 
     useEffect(() => {
-        loadData();
-    }, [lastUpdated]);
+        if (user) {
+            loadData();
+        }
+    }, [lastUpdated, user]);
 
     const handleMarkComplete = async (id) => {
         try {
@@ -63,7 +67,7 @@ const Dashboard = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
                 <div>
                     <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-                        Welcome Back, Dr. ! 👋
+                        Welcome Back, Dr. {user?.email?.split('@')[0]}! 👋
                     </h2>
                     <p className="text-[var(--text-secondary)] mt-1">Here's what's happening with your study goals today.</p>
                 </div>

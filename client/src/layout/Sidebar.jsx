@@ -14,9 +14,9 @@ import {
 const Sidebar = ({ isOpen, onClose }) => {
     const navItems = [
         { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { path: '/planner', label: 'Study Planner', icon: Calendar },
         { path: '/database', label: 'Database', icon: Database },
         { path: '/analytics', label: 'Analytics', icon: BarChart2 },
-        { path: '/revision', label: 'Revision Tracker', icon: RotateCcw },
     ];
 
     return (

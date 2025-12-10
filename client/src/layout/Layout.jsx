@@ -14,7 +14,6 @@ const Layout = () => {
             case '/': return 'Dashboard';
             case '/analytics': return 'Analytics';
             case '/planner': return 'Study Planner';
-            case '/revision': return 'Revision Tracker';
             case '/pyq': return 'PYQ Explorer';
             case '/priority': return 'Priority Queue';
             case '/database': return 'Database Editor';

@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { createClient } from '@supabase/supabase-js';
+import { useAuth } from '../context/AuthContext';
+import { getTopic, updateTopic, createTopic, getTopicChildren } from '../services/api'; // Updated imports
+// import { createClient } from '@supabase/supabase-js'; 
 import { CONFIG } from '../config';
 import { ChevronRight, Plus, FileText, Save } from 'lucide-react';
 import { Utils } from '../utils';
 
-const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+// const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); // Removed
 
 const TopicPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [topic, setTopic] = useState(null);
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(true);
@@ -24,13 +27,9 @@ const TopicPage = () => {
     const loadTopic = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('topics')
-                .select('*')
-                .eq('id', id)
-                .single();
+            const data = await getTopic(id); // Use API
 
-            if (error) throw error;
+            if (!data) throw new Error("Topic not found");
             setTopic(data);
             setNotes(data.notes || '');
         } catch (err) {
@@ -42,30 +41,22 @@ const TopicPage = () => {
 
     const loadSubPages = async () => {
         try {
-            // Try to load sub-pages if table exists
-            const { data, error } = await supabase
-                .from('topics')
-                .select('*')
-                .eq('parent_id', id);
-
-            if (!error && data) {
+            // Use API
+            const data = await getTopicChildren(id);
+            if (data) {
                 setSubPages(data);
             }
         } catch (err) {
             // Sub-pages table might not exist yet
-            console.log('Sub-pages not available yet');
+            console.log('Sub-pages not available yet or error:', err);
         }
     };
 
     const saveNotes = async () => {
         setSaving(true);
         try {
-            const { error } = await supabase
-                .from('topics')
-                .update({ notes })
-                .eq('id', id);
-
-            if (error) throw error;
+            // API usage - notes update
+            await updateTopic(id, { notes });
         } catch (err) {
             console.error('Error saving notes:', err);
             alert('Failed to save notes');
@@ -79,18 +70,27 @@ const TopicPage = () => {
         if (!title) return;
 
         try {
-            const { data, error } = await supabase
-                .from('topics')
-                .insert({
-                    topic_name: title,
-                    parent_id: id,
-                    subject_category: topic.subject_category,
-                })
-                .select()
-                .single();
+            const data = await createTopic({
+                topicName: title,
+                parentId: id,
+                subjectCategory: topic.subjectCategory,
+                userId: user?.id // Pass userId
+            });
 
-            if (error) throw error;
-            setSubPages(prev => [...prev, data]);
+            // Standardize return for list if needed, or api returns camelCase transformed?
+            // createTopic in api.js returns response.data which is RAW DB ROW (snake_case)
+            // We should transform it or just handle it. 
+            // setSubPages expects items with topicName (camelCase) to match current Usage?
+            // getTopicChildren returns camelCase.
+            // So we need to transform this result.
+
+            const newPage = {
+                id: data.id,
+                topicName: data.topic_name,
+                subjectCategory: data.subject_category
+            };
+
+            setSubPages(prev => [...prev, newPage]);
         } catch (err) {
             console.error('Error creating sub-page:', err);
             alert('Failed to create sub-page');
@@ -124,29 +124,29 @@ const TopicPage = () => {
                     Database
                 </button>
                 <ChevronRight size={16} />
-                <span className="text-[var(--text-primary)]">{topic.topic_name}</span>
+                <span className="text-[var(--text-primary)]">{topic.topicName}</span>
             </div>
 
             {/* Header */}
             <div className="space-y-4">
-                <h1 className="text-4xl font-bold">{topic.topic_name}</h1>
+                <h1 className="text-4xl font-bold">{topic.topicName}</h1>
 
                 <div className="flex flex-wrap gap-2">
-                    {topic.subject_category && (
+                    {topic.subjectCategory && (
                         <span
                             className="px-3 py-1 rounded-full text-sm font-medium"
                             style={{
-                                backgroundColor: Utils.getSubjectColor(topic.subject_category) + '30',
-                                color: Utils.getSubjectColor(topic.subject_category)
+                                backgroundColor: Utils.getSubjectColor(topic.subjectCategory) + '30',
+                                color: Utils.getSubjectColor(topic.subjectCategory)
                             }}
                         >
-                            {topic.subject_category}
+                            {topic.subjectCategory}
                         </span>
                     )}
                     {topic.priority && (
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${topic.priority === 'High RR' ? 'bg-red-500/20 text-red-400' :
-                                topic.priority === 'Moderate RR' ? 'bg-yellow-500/20 text-yellow-400' :
-                                    'bg-blue-500/20 text-blue-400'
+                            topic.priority === 'Moderate RR' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-blue-500/20 text-blue-400'
                             }`}>
                             {topic.priority}
                         </span>
@@ -161,7 +161,7 @@ const TopicPage = () => {
                 {/* Meta info */}
                 <div className="flex flex-wrap gap-4 text-sm text-[var(--text-secondary)]">
                     {topic.duration && <span>⏱️ {Utils.formatDuration(topic.duration)}</span>}
-                    {topic.planned_date && <span>📅 {Utils.formatDate(topic.planned_date)}</span>}
+                    {topic.plannedDate && <span>📅 {Utils.formatDate(topic.plannedDate)}</span>}
                     {topic.source && <span>📚 {topic.source}</span>}
                 </div>
             </div>
@@ -213,7 +213,7 @@ const TopicPage = () => {
                                 className="w-full flex items-center gap-3 p-3 bg-[var(--bg-secondary)] hover:bg-[var(--bg-card-hover)] rounded-lg transition-colors text-left"
                             >
                                 <FileText size={18} className="text-[var(--text-tertiary)]" />
-                                <span className="flex-1">{subPage.topic_name}</span>
+                                <span className="flex-1">{subPage.topicName}</span>
                                 <ChevronRight size={16} className="text-[var(--text-tertiary)]" />
                             </button>
                         ))}
@@ -222,10 +222,10 @@ const TopicPage = () => {
             </div>
 
             {/* PYQ Asked */}
-            {topic.pyq_asked && (
+            {topic.pyqAsked && (
                 <div className="glass-card p-6">
                     <h3 className="text-lg font-semibold mb-3">Previously Asked (PYQ)</h3>
-                    <p className="text-[var(--text-secondary)]">{topic.pyq_asked}</p>
+                    <p className="text-[var(--text-secondary)]">{topic.pyqAsked}</p>
                 </div>
             )}
         </div>
