@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDatabase } from '../context/DatabaseContext';
 // import { createClient } from '@supabase/supabase-js'; // Removed
 import { CONFIG } from '../config';
 import { Filter, ChevronDown, Calendar as CalendarIcon, Plus, X, Table2, Table, LayoutGrid, Search } from 'lucide-react';
@@ -33,6 +34,7 @@ const DEFAULT_VIEWS = [
 const Database = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterSubject, setFilterSubject] = useState('All');
@@ -58,16 +60,16 @@ const Database = () => {
     });
 
     useEffect(() => {
-        if (user) {
+        if (user && currentDatabase) {
             loadData();
         }
-    }, [user]);
+    }, [user, currentDatabase]);
 
     const loadData = async () => {
         setLoading(true);
         try {
             // Load topics via API
-            const topicsData = await getTopics(false, user?.id);
+            const topicsData = await getTopics(false, user?.id, currentDatabase?.id);
             setTopics(topicsData || []);
 
             // Extract unique subjects (API returns camelCase)
@@ -153,7 +155,9 @@ const Database = () => {
                 priority: newRow.priority,
                 source: newRow.source,
                 duration: newRow.duration,
-                planned_date: newRow.planned_date
+                planned_date: newRow.planned_date,
+                user_id: user?.id,
+                database_id: currentDatabase?.id
             });
 
             // Transform to camelCase for local state
@@ -488,7 +492,9 @@ const Database = () => {
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-28">Duration</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">Planned Date</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">MCQ Done</th>
+                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">1st Rev Status</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">1st Rev Date</th>
+                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">2nd Rev Status</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">2nd Rev Date</th>
                                 <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Completed</th>
                                 {/* Custom Columns */}
@@ -507,50 +513,80 @@ const Database = () => {
                                 >
                                     <td className="p-3 text-[var(--text-tertiary)]">{topic.no || idx + 1}</td>
                                     <td className="p-3">
-                                        <button
-                                            onClick={() => navigate(`/topic/${topic.id}`)}
-                                            className="text-left hover:text-[var(--primary)] transition-colors"
-                                        >
-                                            <div className="font-medium text-[var(--text-primary)]">{topic.topicName}</div>
-                                            {topic.pyqAsked && (
-                                                <div className="text-xs text-[var(--text-tertiary)] mt-1 line-clamp-1">
-                                                    PYQ: {topic.pyqAsked}
-                                                </div>
-                                            )}
-                                        </button>
-                                    </td>
-                                    <td className="p-3">
-                                        {topic.subjectCategory && (
-                                            <span
-                                                className="px-2 py-1 rounded text-xs font-medium"
-                                                style={{
-                                                    backgroundColor: Utils.getSubjectColor(topic.subjectCategory) + '30',
-                                                    color: Utils.getSubjectColor(topic.subjectCategory)
-                                                }}
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={topic.topicName || ''}
+                                                    onChange={(e) => updateTopic(topic.id, 'topicName', e.target.value)}
+                                                    className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-sm focus:outline-none focus:border-[var(--primary)] font-medium text-[var(--text-primary)]"
+                                                />
+                                                {topic.pyqAsked && (
+                                                    <div className="text-xs text-[var(--text-tertiary)] mt-1 line-clamp-1 px-1">
+                                                        PYQ: {topic.pyqAsked}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => navigate(`/topic/${topic.id}`)}
+                                                className="p-1.5 text-[var(--text-tertiary)] hover:text-[var(--primary)] hover:bg-[var(--bg-card-hover)] rounded transition-colors"
+                                                title="Open Details"
                                             >
-                                                {topic.subjectCategory}
-                                            </span>
-                                        )}
+                                                <LayoutGrid size={14} />
+                                            </button>
+                                        </div>
                                     </td>
                                     <td className="p-3">
-                                        {topic.priority && (
-                                            <span className={`px-2 py-1 rounded text-xs font-medium ${topic.priority === 'High RR' ? 'bg-red-500/20 text-red-400' :
-                                                topic.priority === 'Moderate RR' ? 'bg-yellow-500/20 text-yellow-400' :
-                                                    'bg-blue-500/20 text-blue-400'
-                                                }`}>
-                                                {topic.priority}
-                                            </span>
-                                        )}
+                                        <select
+                                            value={topic.subjectCategory || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'subjectCategory', e.target.value)}
+                                            className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs font-medium focus:outline-none focus:border-[var(--primary)]"
+                                            style={{
+                                                color: topic.subjectCategory ? Utils.getSubjectColor(topic.subjectCategory) : 'inherit'
+                                            }}
+                                        >
+                                            <option value="">Select Subject</option>
+                                            {subjects.map(subject => (
+                                                <option key={subject} value={subject}>{subject}</option>
+                                            ))}
+                                        </select>
                                     </td>
                                     <td className="p-3">
-                                        {topic.source && (
-                                            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded text-xs">
-                                                {topic.source.split('➡️')[0].trim()}
-                                            </span>
-                                        )}
+                                        <select
+                                            value={topic.priority || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'priority', e.target.value)}
+                                            className={`w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs font-medium focus:outline-none focus:border-[var(--primary)] ${
+                                                topic.priority === 'High RR' ? 'text-red-400' :
+                                                topic.priority === 'Moderate RR' ? 'text-yellow-400' :
+                                                topic.priority === 'Low RR' ? 'text-blue-400' : ''
+                                            }`}
+                                        >
+                                            <option value="">Select Priority</option>
+                                            <option value="High RR">High RR</option>
+                                            <option value="Moderate RR">Moderate RR</option>
+                                            <option value="Low RR">Low RR</option>
+                                        </select>
                                     </td>
-                                    <td className="p-3 text-[var(--text-secondary)]">
-                                        {topic.duration ? `${topic.duration}h` : '-'}
+                                    <td className="p-3">
+                                        <input
+                                            type="text"
+                                            value={topic.source || ''}
+                                            onChange={(e) => updateTopic(topic.id, 'source', e.target.value)}
+                                            className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)]"
+                                            placeholder="Source"
+                                        />
+                                    </td>
+                                    <td className="p-3">
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type="number"
+                                                step="0.5"
+                                                value={topic.duration || ''}
+                                                onChange={(e) => updateTopic(topic.id, 'duration', e.target.value)}
+                                                className="w-16 px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)]"
+                                            />
+                                            <span className="text-xs text-[var(--text-secondary)]">h</span>
+                                        </div>
                                     </td>
                                     <td className="p-3">
                                         <input
@@ -569,12 +605,38 @@ const Database = () => {
                                         />
                                     </td>
                                     <td className="p-3">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={topic.firstRevision === 'TRUE' || topic.firstRevision === 'True'}
+                                                onChange={(e) => updateTopic(topic.id, 'firstRevision', e.target.checked ? 'TRUE' : 'FALSE')}
+                                                className="w-4 h-4 rounded border-[var(--border-subtle)] bg-[var(--bg-secondary)] checked:bg-[var(--primary)]"
+                                            />
+                                            <span className="text-xs text-[var(--text-secondary)]">
+                                                {(topic.firstRevision === 'TRUE' || topic.firstRevision === 'True') ? 'Done' : 'Pending'}
+                                            </span>
+                                        </label>
+                                    </td>
+                                    <td className="p-3">
                                         <input
                                             type="date"
                                             value={topic.firstRevisionDate?.split('T')[0] || ''}
                                             onChange={(e) => updateTopic(topic.id, 'firstRevisionDate', e.target.value)}
                                             className="px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs focus:outline-none focus:border-[var(--primary)] w-full"
                                         />
+                                    </td>
+                                    <td className="p-3">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={topic.secondRevision === 'TRUE' || topic.secondRevision === 'True'}
+                                                onChange={(e) => updateTopic(topic.id, 'secondRevision', e.target.checked ? 'TRUE' : 'FALSE')}
+                                                className="w-4 h-4 rounded border-[var(--border-subtle)] bg-[var(--bg-secondary)] checked:bg-[var(--primary)]"
+                                            />
+                                            <span className="text-xs text-[var(--text-secondary)]">
+                                                {(topic.secondRevision === 'TRUE' || topic.secondRevision === 'True') ? 'Done' : 'Pending'}
+                                            </span>
+                                        </label>
                                     </td>
                                     <td className="p-3">
                                         <input

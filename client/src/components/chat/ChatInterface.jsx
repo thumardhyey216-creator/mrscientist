@@ -1,8 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { useDatabase } from '../../context/DatabaseContext';
 import { askAI } from '../../services/api';
 import { Send, Bot, User } from 'lucide-react';
 
 const ChatInterface = () => {
+    const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [messages, setMessages] = useState([
         { role: 'assistant', content: 'Hello! I am your AI Study Assistant. How can I help you with your NEET-PG preparation today?' }
     ]);
@@ -28,7 +32,7 @@ const ChatInterface = () => {
         setIsLoading(true);
 
         try {
-            const result = await askAI(userMessage);
+            const result = await askAI(userMessage, user?.id, currentDatabase?.id);
             // Result might be object { formatted_response: ..., raw_response: ... } or just string/object
             // API usually returns { response: "..." } or similar based on backend.
             // Let's assume it returns data directly or we check format. 

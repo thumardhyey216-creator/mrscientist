@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { getTopics } from '../services/api';
 // import { createClient } from '@supabase/supabase-js'; // Removed
 // import { CONFIG } from '../config';
@@ -49,18 +50,19 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 const Analytics = () => {
     const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [loading, setLoading] = useState(true);
     const [topics, setTopics] = useState([]);
 
     useEffect(() => {
-        if (user) {
+        if (user && currentDatabase) {
             fetchData();
         }
-    }, [user]);
+    }, [user, currentDatabase]);
 
     const fetchData = async () => {
         try {
-            const data = await getTopics(true, user?.id);
+            const data = await getTopics(true, user?.id, currentDatabase?.id);
             setTopics(data || []);
         } catch (error) {
             console.error('Error fetching analytics data:', error);

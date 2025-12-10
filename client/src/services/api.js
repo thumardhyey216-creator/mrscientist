@@ -285,12 +285,15 @@ class SupabaseAPI extends BaseAPI {
         // Python backend likely uses the SUPABASE_URL/KEY from env or config.
     }
 
-    async queryDatabase(useCache = true, userId = null) {
+    async queryDatabase(useCache = true, userId = null, databaseId = null) {
         // Cache key should probably include userId, but for now assuming single user session per load
         if (useCache && this.isCacheValid()) return this.cache.data;
 
         try {
-            const response = await api.get(`${this.baseUrl}/topics`, { params: { user_id: userId } });
+            const params = { user_id: userId };
+            if (databaseId) params.database_id = databaseId;
+            
+            const response = await api.get(`${this.baseUrl}/topics`, { params });
             const transformed = this.transformTopics(response.data);
             this.cache = { data: transformed, timestamp: Date.now() };
             return transformed;
@@ -300,8 +303,10 @@ class SupabaseAPI extends BaseAPI {
         }
     }
 
-    async initializeUser(userId) {
-        const response = await api.post(`${this.baseUrl}/initialize`, { user_id: userId });
+    async initializeUser(userId, databaseId) {
+        const payload = { user_id: userId };
+        if (databaseId) payload.database_id = databaseId;
+        const response = await api.post(`${this.baseUrl}/initialize`, payload);
         this.cache.timestamp = null; 
         return response.data;
     }
@@ -359,6 +364,9 @@ class SupabaseAPI extends BaseAPI {
 
         if (data.user_id) payload.user_id = data.user_id;
         if (data.userId) payload.user_id = data.userId;
+
+        if (data.database_id) payload.database_id = data.database_id;
+        if (data.databaseId) payload.database_id = data.databaseId;
 
         const response = await api.post(`${this.baseUrl}/topics`, payload);
         this.cache.timestamp = null;
@@ -564,8 +572,8 @@ class SupabaseAPI extends BaseAPI {
         return response.data;
     }
 
-    async clearSchedule(userId) {
-        const response = await api.post('/api/clear-schedule', { user_id: userId });
+    async clearSchedule(userId, databaseId) {
+        const response = await api.post('/api/clear-schedule', { user_id: userId, database_id: databaseId });
         this.cache.timestamp = null; // Invalidate cache
         return response.data;
     }
@@ -578,8 +586,8 @@ const backendAPI = (CONFIG.DATA_SOURCE === 'supabase' || CONFIG.DATA_SOURCE === 
     : new NotionAPI();
 
 // Export accessors
-export const getTopics = (useCache, userId) => backendAPI.queryDatabase(useCache, userId);
-export const initializeUser = (userId) => backendAPI.initializeUser(userId);
+export const getTopics = (useCache, userId, databaseId) => backendAPI.queryDatabase(useCache, userId, databaseId);
+export const initializeUser = (userId, databaseId) => backendAPI.initializeUser(userId, databaseId);
 export const markComplete = (id) => backendAPI.markComplete(id);
 export const getPageBlocks = (pageId) => backendAPI.getPageBlocks(pageId);
 export const updateBlock = (blockId, blockType, content) => backendAPI.updateBlock(blockId, blockType, content);
@@ -598,10 +606,10 @@ export const addCustomColumn = (data) => backendAPI.addCustomColumn(data);
 export const getDatabaseViews = () => backendAPI.getDatabaseViews();
 export const saveDatabaseView = (data) => backendAPI.saveDatabaseView(data);
 export const generateSchedule = (params) => backendAPI.generateSchedule(params);
-export const clearSchedule = (userId) => backendAPI.clearSchedule(userId);
+export const clearSchedule = (userId, databaseId) => backendAPI.clearSchedule(userId, databaseId);
 
-export const askAI = async (prompt) => {
-    const response = await api.post('/api/ask-ai', { prompt });
+export const askAI = async (prompt, userId, databaseId) => {
+    const response = await api.post('/api/ask-ai', { prompt, user_id: userId, database_id: databaseId });
     return response.data;
 };
 

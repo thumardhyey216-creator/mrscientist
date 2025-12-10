@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { getTopics, generateSchedule, clearSchedule } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -19,6 +20,7 @@ const StudyPlanner = () => {
     const navigate = useNavigate();
     const { lastUpdated } = useOutletContext();
     const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -36,13 +38,13 @@ const StudyPlanner = () => {
     const [generating, setGenerating] = useState(false);
 
     useEffect(() => {
-        if (user) loadData();
-    }, [user, lastUpdated]);
+        if (user && currentDatabase) loadData();
+    }, [user, lastUpdated, currentDatabase]);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const data = await getTopics(true, user?.id);
+            const data = await getTopics(true, user?.id, currentDatabase?.id);
             setTopics(data);
         } catch (error) {
             console.error("Failed to load topics:", error);
@@ -56,6 +58,7 @@ const StudyPlanner = () => {
         try {
             await generateSchedule({
                 user_id: user.id,
+                database_id: currentDatabase?.id,
                 startDate: genConfig.startDate,
                 topicsPerDay: parseInt(genConfig.topicsPerDay),
                 dailyHours: parseFloat(genConfig.dailyHours),
@@ -126,7 +129,7 @@ const StudyPlanner = () => {
         }
         setLoading(true);
         try {
-            await clearSchedule(user.id);
+            await clearSchedule(user.id, currentDatabase?.id);
             await loadData();
         } catch (error) {
             console.error("Failed to clear schedule:", error);

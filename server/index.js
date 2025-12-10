@@ -4,6 +4,10 @@ import dotenv from 'dotenv';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+import pg from 'pg';
+const { Client } = pg;
 
 // Load environment variables
 dotenv.config();
@@ -26,6 +30,84 @@ const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME || 'gemini-2.0-flash';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
+// Razorpay Config
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || 'secret_placeholder'
+});
+
+// --- Payment Endpoints ---
+
+// 1. Create Order
+app.post('/api/payment/create-order', async (req, res) => {
+    try {
+        const { amount = 50000, currency = 'INR' } = req.body; // Default 500 Rs
+        
+        const options = {
+            amount: amount, 
+            currency: currency,
+            receipt: `receipt_${Date.now()}`
+        };
+
+        const order = await razorpay.orders.create(options);
+        res.json(order);
+    } catch (error) {
+        console.error("Razorpay Create Order Error:", error);
+        // Handle Razorpay specific error structure
+        const errorMessage = error.error?.description || error.message || "Failed to create order";
+        res.status(500).json({ error: errorMessage, details: error });
+    }
+});
+
+// 2. Verify Payment
+app.post('/api/payment/verify', async (req, res) => {
+    try {
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, user_id } = req.body;
+
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+
+        const expectedSignature = crypto
+            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+            .update(body.toString())
+            .digest('hex');
+
+        const isAuthentic = expectedSignature === razorpay_signature;
+
+        if (isAuthentic) {
+            // Update User Subscription in Supabase
+            if (supabase && user_id) {
+                // 1. Log Payment
+                await supabase.from('payments').insert({
+                    user_id,
+                    amount: 50000,
+                    razorpay_order_id,
+                    razorpay_payment_id,
+                    status: 'paid'
+                });
+
+                // 2. Update Profile
+                const expiryDate = new Date();
+                expiryDate.setMonth(expiryDate.getMonth() + 1); // +1 Month validity
+
+                await supabase.from('profiles').upsert({
+                    id: user_id,
+                    subscription_status: 'active',
+                    subscription_plan: 'monthly_500',
+                    subscription_expiry: expiryDate.toISOString(),
+                    updated_at: new Date().toISOString()
+                });
+            }
+
+            res.json({ success: true, message: "Payment verified successfully" });
+        } else {
+            res.status(400).json({ success: false, error: "Invalid signature" });
+        }
+    } catch (error) {
+        console.error("Payment Verification Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Initialize Services
 // 1. Gemini
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -43,6 +125,24 @@ let supabase = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     console.log(`✅ Supabase connected: ${SUPABASE_URL.substring(0, 30)}...`);
+    
+    // Check Key Role
+    try {
+        const tokenParts = SUPABASE_KEY.split('.');
+        if (tokenParts.length === 3) {
+            const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+            if (payload.role !== 'service_role') {
+                console.warn("\n⚠️  WARNING: SUPABASE_KEY appears to be an ANON key (role: '" + payload.role + "').");
+                console.warn("   The backend requires the SERVICE_ROLE_KEY to update subscription statuses and record payments.");
+                console.warn("   Please update server/.env with the SERVICE_ROLE_KEY from Supabase Dashboard > Project Settings > API.\n");
+            } else {
+                console.log("✅ Service Role Key detected. Backend has full database access.");
+            }
+        }
+    } catch (e) {
+        console.warn("⚠️ Could not validate SUPABASE_KEY role:", e.message);
+    }
+
 } else {
     console.warn("⚠️ Supabase not configured. Check .env variables.");
 }
@@ -74,6 +174,13 @@ const runAutoMigrations = async () => {
         } else {
             console.log("  ✅ custom_data column exists");
         }
+
+        const { error: dbError } = await supabase.from('topics').select('database_id').limit(1);
+        if (dbError && dbError.message.includes('database_id')) {
+            console.log("  ⚠️ database_id column missing - please run setup_multi_db.sql in Supabase SQL Editor");
+        } else {
+            console.log("  ✅ database_id column exists");
+        }
     } catch (e) {
         console.error("Migration check failed:", e);
     }
@@ -82,17 +189,70 @@ const runAutoMigrations = async () => {
 runAutoMigrations();
 
 
-// 2. AI Chat Endpoint
+// 2. AI Chat Endpoint (Enhanced)
 app.post('/api/ask-ai', async (req, res) => {
     try {
-        const { prompt } = req.body;
+        const { prompt, user_id, database_id } = req.body;
         if (!prompt) {
             return res.status(400).json({ error: 'Missing prompt' });
         }
 
         console.log(`🤖 Processing AI Request: ${prompt.substring(0, 50)}...`);
 
-        const fullPrompt = `${SYSTEM_INSTRUCTION}\n\nUser Query: ${prompt}`;
+        // 1. Context Retrieval (Basic RAG)
+        let context = "No specific database records found.";
+        
+        if (supabase && user_id) {
+            try {
+                // Extract keywords (simplistic approach)
+                const keywords = prompt.split(' ').filter(w => w.length > 4);
+                
+                let query = supabase
+                    .from('topics')
+                    .select('topic_name, subject_category, priority, completed, planned_date, notes')
+                    .eq('user_id', user_id);
+
+                if (database_id) {
+                    query = query.eq('database_id', database_id);
+                }
+
+                if (keywords.length > 0) {
+                    // specific search
+                    const orConditions = keywords.map(k => `topic_name.ilike.%${k}%,subject_category.ilike.%${k}%`).join(',');
+                    query = query.or(orConditions);
+                } else {
+                    // default context: high priority or incomplete
+                    query = query.neq('completed', 'True').order('priority', { ascending: true });
+                }
+
+                const { data: topics, error } = await query.limit(15);
+
+                if (!error && topics && topics.length > 0) {
+                    context = JSON.stringify(topics, null, 2);
+                }
+            } catch (err) {
+                console.error("Context retrieval error:", err);
+            }
+        }
+
+        const fullPrompt = `
+        ${SYSTEM_INSTRUCTION}
+
+        You have access to the user's study database. Here is some relevant context based on their query:
+        
+        --- DATABASE CONTEXT ---
+        ${context}
+        ------------------------
+
+        User Query: ${prompt}
+
+        Instructions:
+        1. Answer the user's question directly.
+        2. If the database context is relevant, reference it (e.g., "I found 'Anatomy' in your high priority list...").
+        3. If the user asks about their schedule or specific topics, use the provided context.
+        4. If the context is empty/irrelevant, answer based on general medical knowledge.
+        `;
+
         const result = await model.generateContent(fullPrompt);
         const responseText = result.response.text();
 
@@ -273,20 +433,26 @@ app.delete('/api/supabase/pages/:id', async (req, res) => {
 // Initialize user data
 app.post('/api/supabase/initialize', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
-    const { user_id } = req.body;
+    const { user_id, database_id } = req.body;
     if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
 
     try {
-        // 1. Check if user already has data
-        const { count, error: countError } = await supabase
+        // 1. Check if user already has data IN THIS DATABASE
+        let checkQuery = supabase
             .from('topics')
             .select('*', { count: 'exact', head: true })
             .eq('user_id', user_id);
         
+        if (database_id) {
+            checkQuery = checkQuery.eq('database_id', database_id);
+        }
+
+        const { count, error: countError } = await checkQuery;
+        
         if (countError) throw countError;
         
         if (count > 0) {
-            return res.json({ message: 'User already initialized', count });
+            return res.json({ message: 'User already initialized in this database', count });
         }
 
         // 2. Fetch master syllabus
@@ -320,6 +486,7 @@ app.post('/api/supabase/initialize', async (req, res) => {
             return {
                 ...rest,
                 user_id: user_id,
+                database_id: database_id || null, // Assign to specific database
                 notion_id: null, // Ensure notion_id is null to avoid unique constraint violations
                 completed: 'False', // Reset completion
                 first_revision: null,
@@ -352,7 +519,7 @@ app.post('/api/supabase/initialize', async (req, res) => {
 // Get topics
 app.get('/api/supabase/topics', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
-    const { user_id } = req.query;
+    const { user_id, database_id } = req.query;
     
     let query = supabase.from('topics').select('*');
     
@@ -363,6 +530,10 @@ app.get('/api/supabase/topics', async (req, res) => {
         // OR return all? For safety in multi-tenant, better to restrict.
         // But for transition, let's fetch where user_id is null.
         query = query.is('user_id', null);
+    }
+
+    if (database_id) {
+        query = query.eq('database_id', database_id);
     }
 
     const { data, error } = await query;
@@ -425,18 +596,24 @@ app.post('/api/generate-schedule', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
     
     try {
-        const { user_id, startDate, topicsPerDay = 5, dailyHours, preference, strategy = 'priority', prompt = '', offDays = [] } = req.body;
+        const { user_id, database_id, startDate, topicsPerDay = 5, dailyHours, preference, strategy = 'priority', prompt = '', offDays = [] } = req.body;
         
         if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
         
         console.log(`📅 Generating schedule for user ${user_id} starting ${startDate}`);
 
         // 1. Fetch incomplete topics
-        const { data: topics, error } = await supabase
+        let query = supabase
             .from('topics')
             .select('*')
             .eq('user_id', user_id)
             .or('completed.eq.False,completed.is.null');
+
+        if (database_id) {
+            query = query.eq('database_id', database_id);
+        }
+
+        const { data: topics, error } = await query;
 
         if (error) throw error;
         
@@ -455,7 +632,7 @@ app.post('/api/generate-schedule', async (req, res) => {
                 const simplifiedTopics = topics.map(t => ({
                     id: t.id,
                     name: t.topic_name,
-                    subject: t.subject,
+                    subject: t.subject_category,
                     priority: t.priority
                 }));
 
@@ -468,20 +645,47 @@ app.post('/api/generate-schedule', async (req, res) => {
                     ${JSON.stringify(simplifiedTopics)}
                     
                     Task: Reorder these topics to best match the user's strategy.
-                    - If the user mentions specific subjects, put them first.
-                    - If they mention priority, use that.
-                    - If they mention "easy first", try to infer or just use random.
-                    - Return ONLY a JSON array of the topic IDs in the correct order. 
-                    - Do not include any markdown or explanation. Just the JSON array.
+                    
+                    CRITICAL INSTRUCTIONS:
+                    1. **Priority Sorting**: If the user mentions "High Yield", "Priority", or "RR", you MUST place "High" priority topics first, then "Moderate"/"Medium", then "Low".
+                    2. **Subject Clustering**: If the user mentions "grouping subjects", "topics together", "associated topics", or similar, you MUST keep topics with the same 'subject' value together *within* their priority group.
+                       - CORRECT: [High-SubjectA, High-SubjectA, High-SubjectB, High-SubjectB, Med-SubjectA...]
+                       - WRONG: [High-SubjectA, High-SubjectB, High-SubjectA...] (Don't mix subjects within the same priority tier)
+                    3. **Interpretation**: "High Yield" = "High Priority" or "High RR".
+                    
+                    Output Format:
+                    - Return ONLY a valid JSON array of strings (the topic IDs).
+                    - Example: ["id_1", "id_2", "id_3"]
+                    - NO markdown, NO code blocks, NO explanations. Just the raw JSON array.
                 `;
 
                 const result = await model.generateContent(aiPrompt);
                 const response = result.response;
-                const text = response.text();
+                let text = response.text();
                 
-                // Clean up markdown code blocks if present
-                const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                const sortedIds = JSON.parse(jsonStr);
+                console.log("🤖 Raw AI Sorting Response:", text.substring(0, 200) + "...");
+
+                // Enhanced JSON Extraction
+                // Find the first '[' and the last ']'
+                const firstBracket = text.indexOf('[');
+                const lastBracket = text.lastIndexOf(']');
+                
+                if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+                    text = text.substring(firstBracket, lastBracket + 1);
+                } else {
+                    console.error("❌ AI Response did not contain a JSON array:", text);
+                    throw new Error("No JSON array found in response");
+                }
+                
+                let sortedIds;
+                try {
+                    sortedIds = JSON.parse(text);
+                } catch (parseError) {
+                    console.error("❌ JSON Parse Failed:", parseError);
+                    // Try to fix common JSON errors (like trailing commas)
+                    text = text.replace(/,\s*]/, ']');
+                    sortedIds = JSON.parse(text);
+                }
 
                 if (Array.isArray(sortedIds)) {
                     // Create a map for O(1) lookup of index
@@ -495,9 +699,18 @@ app.post('/api/generate-schedule', async (req, res) => {
                     console.log("✅ AI Sorting applied successfully");
                 }
             } catch (aiError) {
-                console.error("⚠️ AI Sorting failed, falling back to Priority:", aiError);
-                // Fallback to priority
-                topics.sort((a, b) => (priorityOrder[a.priority] || 4) - (priorityOrder[b.priority] || 4));
+                console.error("⚠️ AI Sorting failed, falling back to Smart Sort (Priority + Subject):", aiError);
+                // Fallback to Priority THEN Subject
+                topics.sort((a, b) => {
+                    const pA = priorityOrder[a.priority] || 4;
+                    const pB = priorityOrder[b.priority] || 4;
+                    if (pA !== pB) return pA - pB;
+                    
+                    // Secondary sort: Subject
+                    const sA = a.subject_category || '';
+                    const sB = b.subject_category || '';
+                    return sA.localeCompare(sB);
+                });
             }
         } else {
             topics.sort((a, b) => {
@@ -620,12 +833,12 @@ app.post('/api/clear-schedule', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
     
     try {
-        const { user_id } = req.body;
+        const { user_id, database_id } = req.body;
         if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
 
-        console.log(`🧹 Clearing schedule for user ${user_id}`);
+        console.log(`🧹 Clearing schedule for user ${user_id} ${database_id ? `in db ${database_id}` : ''}`);
 
-        const { data, error, count } = await supabase
+        let query = supabase
             .from('topics')
             .update({ 
                 planned_date: null,
@@ -633,8 +846,13 @@ app.post('/api/clear-schedule', async (req, res) => {
                 first_revision_date: null,
                 second_revision_date: null
             })
-            .eq('user_id', user_id)
-            .select('id', { count: 'exact' });
+            .eq('user_id', user_id);
+
+        if (database_id) {
+            query = query.eq('database_id', database_id);
+        }
+
+        const { data, error, count } = await query.select('id', { count: 'exact' });
 
         if (error) {
             console.error("Supabase Error:", error);

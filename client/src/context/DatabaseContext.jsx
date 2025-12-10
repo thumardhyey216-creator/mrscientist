@@ -1,0 +1,92 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
+import { initializeUser } from '../services/api';
+
+const DatabaseContext = createContext({});
+
+export const useDatabase = () => useContext(DatabaseContext);
+
+export const DatabaseProvider = ({ children }) => {
+    const { user } = useAuth();
+    const [databases, setDatabases] = useState([]);
+    const [currentDatabase, setCurrentDatabase] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (user) {
+            fetchDatabases();
+        } else {
+            setDatabases([]);
+            setCurrentDatabase(null);
+        }
+    }, [user]);
+
+    const fetchDatabases = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                    .from('user_databases')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: true });
+
+            if (error) throw error;
+
+            setDatabases(data);
+            
+            // Auto-select first database or restore selection
+            const savedDbId = localStorage.getItem('currentDatabaseId');
+            if (savedDbId) {
+                const savedDb = data.find(db => db.id === savedDbId);
+                if (savedDb) {
+                    setCurrentDatabase(savedDb);
+                } else if (data.length > 0) {
+                    setCurrentDatabase(data[0]);
+                }
+            } else if (data.length > 0) {
+                setCurrentDatabase(data[0]);
+            }
+
+        } catch (error) {
+            console.error('Error fetching databases:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const createDatabase = async (name, description = '', icon = '📚', initialize = false) => {
+        try {
+            const { data, error } = await supabase
+                .from('user_databases')
+                .insert([{ user_id: user.id, name, description, icon }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            if (initialize) {
+                // Initialize with default topics
+                await initializeUser(user.id, data.id);
+            }
+
+            setDatabases(prev => [...prev, data]);
+            setCurrentDatabase(data); // Auto-switch to new DB
+            return data;
+        } catch (error) {
+            console.error('Error creating database:', error);
+            throw error;
+        }
+    };
+
+    const switchDatabase = (database) => {
+        setCurrentDatabase(database);
+        localStorage.setItem('currentDatabaseId', database.id);
+    };
+
+    return (
+        <DatabaseContext.Provider value={{ databases, currentDatabase, loading, createDatabase, switchDatabase, fetchDatabases }}>
+            {children}
+        </DatabaseContext.Provider>
+    );
+};

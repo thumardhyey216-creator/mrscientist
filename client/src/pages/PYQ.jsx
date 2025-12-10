@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { getTopics, markComplete } from '../services/api';
 import { Utils } from '../utils';
 import { ExternalLink, Check } from 'lucide-react';
 
 const PYQ = () => {
     const { lastUpdated } = useOutletContext();
+    const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [topics, setTopics] = useState([]);
     const [filteredTopics, setFilteredTopics] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -15,7 +19,7 @@ const PYQ = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const data = await getTopics();
+            const data = await getTopics(true, user?.id, currentDatabase?.id);
             // Filter only topics with PYQs
             const pyqs = data.filter(t => t.pyqAsked && t.pyqAsked.trim() !== '');
             setTopics(pyqs);
@@ -48,7 +52,7 @@ const PYQ = () => {
 
     useEffect(() => {
         loadData();
-    }, [lastUpdated]);
+    }, [lastUpdated, currentDatabase]);
 
     useEffect(() => {
         filterTopics(topics, searchQuery, selectedSubject);

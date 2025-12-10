@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { getTopic, updateTopic, createTopic, getTopicChildren } from '../services/api'; // Updated imports
 // import { createClient } from '@supabase/supabase-js'; 
 import { CONFIG } from '../config';
@@ -13,6 +14,7 @@ const TopicPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [topic, setTopic] = useState(null);
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(true);
@@ -74,7 +76,8 @@ const TopicPage = () => {
                 topicName: title,
                 parentId: id,
                 subjectCategory: topic.subjectCategory,
-                userId: user?.id // Pass userId
+                userId: user?.id,
+                databaseId: currentDatabase?.id
             });
 
             // Standardize return for list if needed, or api returns camelCase transformed?

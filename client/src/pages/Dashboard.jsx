@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { getTopics, markComplete } from '../services/api';
 import { Utils } from '../utils';
 import StatCard from '../components/dashboard/StatCard';
@@ -11,6 +12,7 @@ import { BookOpen, CheckCircle, Clock, Calendar } from 'lucide-react';
 const Dashboard = () => {
     const { lastUpdated } = useOutletContext();
     const { user } = useAuth();
+    const { currentDatabase } = useDatabase();
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedTopic, setSelectedTopic] = useState(null);
@@ -18,7 +20,7 @@ const Dashboard = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const data = await getTopics(true, user?.id);
+            const data = await getTopics(true, user?.id, currentDatabase?.id);
             setTopics(data);
         } catch (error) {
             console.error("Failed to load topics:", error);
@@ -31,7 +33,7 @@ const Dashboard = () => {
         if (user) {
             loadData();
         }
-    }, [lastUpdated, user]);
+    }, [lastUpdated, user, currentDatabase]);
 
     const handleMarkComplete = async (id) => {
         try {
