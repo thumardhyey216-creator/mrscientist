@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { initializeUser } from '../services/api';
 import { Mail, Lock, Loader2, AlertCircle, Phone, MessageSquare } from 'lucide-react';
 
 const Login = () => {
@@ -27,7 +28,14 @@ const Login = () => {
         setLoading(true);
 
         try {
-            await signIn(email, password);
+            const { user } = await signIn(email, password);
+            if (user) {
+                try {
+                    await initializeUser(user.id);
+                } catch (initErr) {
+                    console.error('Failed to initialize data:', initErr);
+                }
+            }
             navigate('/dashboard');
         } catch (err) {
             setError(err.message);
@@ -48,7 +56,14 @@ const Login = () => {
                 setOtpSent(true);
             } else {
                 // Verify OTP
-                await verifyOtp(phone, otp);
+                const { user } = await verifyOtp(phone, otp);
+                if (user) {
+                    try {
+                        await initializeUser(user.id);
+                    } catch (initErr) {
+                        console.error('Failed to initialize data:', initErr);
+                    }
+                }
                 navigate('/dashboard');
             }
         } catch (err) {

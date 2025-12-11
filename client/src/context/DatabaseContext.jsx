@@ -33,19 +33,42 @@ export const DatabaseProvider = ({ children }) => {
 
             if (error) throw error;
 
-            setDatabases(data);
-            
-            // Auto-select first database or restore selection
-            const savedDbId = localStorage.getItem('currentDatabaseId');
-            if (savedDbId) {
-                const savedDb = data.find(db => db.id === savedDbId);
-                if (savedDb) {
-                    setCurrentDatabase(savedDb);
-                } else if (data.length > 0) {
+            if (data.length === 0) {
+                // No databases found, initialize default one
+                try {
+                    console.log('No databases found. Initializing default database...');
+                    await initializeUser(user.id);
+                    // Fetch again after initialization
+                    const { data: newData, error: newError } = await supabase
+                        .from('user_databases')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: true });
+                        
+                    if (!newError && newData) {
+                        setDatabases(newData);
+                        if (newData.length > 0) {
+                            setCurrentDatabase(newData[0]);
+                        }
+                    }
+                } catch (initError) {
+                    console.error('Auto-initialization failed:', initError);
+                }
+            } else {
+                setDatabases(data);
+                
+                // Auto-select first database or restore selection
+                const savedDbId = localStorage.getItem('currentDatabaseId');
+                if (savedDbId) {
+                    const savedDb = data.find(db => db.id === savedDbId);
+                    if (savedDb) {
+                        setCurrentDatabase(savedDb);
+                    } else {
+                        setCurrentDatabase(data[0]);
+                    }
+                } else {
                     setCurrentDatabase(data[0]);
                 }
-            } else if (data.length > 0) {
-                setCurrentDatabase(data[0]);
             }
 
         } catch (error) {
