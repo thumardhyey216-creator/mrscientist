@@ -12,7 +12,7 @@ import {
 } from 'date-fns';
 import { 
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, 
-    Wand2, Settings, BookOpen, CheckCircle2, RotateCcw, Target, Loader2, X, Trash2, MessageSquare 
+    Wand2, Settings, BookOpen, CheckCircle2, RotateCcw, Target, Loader2, X, Trash2, MessageSquare, Sparkles 
 } from 'lucide-react';
 import ChatInterface from '../components/chat/ChatInterface';
 
@@ -146,6 +146,38 @@ const StudyPlanner = () => {
             }
         });
         return events;
+    };
+
+    const getSmartPrompts = (type) => {
+        const pending = topics.filter(t => t.completed !== 'True');
+        const overdue = pending.filter(t => t.plannedDate && new Date(t.plannedDate) < new Date());
+        
+        // Count by subject
+        const subjects = {};
+        pending.forEach(t => {
+            const s = t.subjectCategory || 'Uncategorized';
+            subjects[s] = (subjects[s] || 0) + 1;
+        });
+        const topSubject = Object.entries(subjects).sort((a,b) => b[1] - a[1])[0];
+
+        if (type === 'generator') {
+            const prompts = [
+                "Lighter schedule on weekends.",
+                "Mix difficult and easy subjects daily."
+            ];
+            if (topSubject) prompts.unshift(`Focus heavily on ${topSubject[0]}.`);
+            if (overdue.length > 0) prompts.unshift(`Prioritize clearing ${overdue.length} overdue topics.`);
+            return prompts.slice(0, 4);
+        } else {
+            // Rescheduler
+            const prompts = [
+                "Push entire schedule by 1 day.",
+                "Push entire schedule by 3 days.",
+            ];
+            if (overdue.length > 0) prompts.unshift(`Move ${overdue.length} overdue topics to next week.`);
+            if (topSubject) prompts.unshift(`Move all ${topSubject[0]} topics to next month.`);
+            return prompts.slice(0, 4);
+        }
     };
 
     const handleClearSchedule = async () => {
@@ -400,15 +432,32 @@ const StudyPlanner = () => {
 
                             {genConfig.strategy === 'custom' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                                        Custom Instructions
-                                    </label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                                            Custom Instructions
+                                        </label>
+                                        <div className="flex items-center gap-1 text-xs text-[var(--primary)]">
+                                            <Sparkles size={12} />
+                                            <span>AI Suggestions</span>
+                                        </div>
+                                    </div>
                                     <textarea
                                         value={genConfig.prompt}
                                         onChange={(e) => setGenConfig({ ...genConfig, prompt: e.target.value })}
                                         placeholder="E.g., 'Focus on Anatomy first, then Physiology. Prioritize High yield topics.'"
-                                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] h-24 resize-none"
+                                        className="w-full bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] h-24 resize-none mb-2"
                                     />
+                                    <div className="flex flex-wrap gap-2">
+                                        {getSmartPrompts('generator').map((p, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => setGenConfig({ ...genConfig, prompt: p })}
+                                                className="text-xs px-2 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/20 hover:bg-[var(--primary)]/20 transition-colors"
+                                            >
+                                                {p}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -542,13 +591,30 @@ const StudyPlanner = () => {
                         </p>
 
                         <div className="mb-6">
-                            <label className="block text-sm font-medium mb-2">Instructions</label>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-sm font-medium">Instructions</label>
+                                <div className="flex items-center gap-1 text-xs text-[var(--primary)]">
+                                    <Sparkles size={12} />
+                                    <span>AI Suggestions</span>
+                                </div>
+                            </div>
                             <textarea
                                 value={reschedulePrompt}
                                 onChange={(e) => setReschedulePrompt(e.target.value)}
                                 placeholder="e.g., 'I was sick yesterday, push everything by 1 day' or 'Move all Physiology topics to next week'"
-                                className="w-full h-32 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] resize-none"
+                                className="w-full h-32 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] resize-none mb-2"
                             />
+                            <div className="flex flex-wrap gap-2">
+                                {getSmartPrompts('rescheduler').map((p, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setReschedulePrompt(p)}
+                                        className="text-xs px-2 py-1 rounded-full bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/20 hover:bg-[var(--primary)]/20 transition-colors text-left"
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
                         <div className="flex gap-3">
