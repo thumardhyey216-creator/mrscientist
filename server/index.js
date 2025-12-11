@@ -670,8 +670,13 @@ app.post('/api/generate-schedule', async (req, res) => {
 
         const { data: topics, error } = await query;
 
-        if (error) throw error;
+        if (error) {
+            console.error("Error fetching topics:", error);
+            throw error;
+        }
         
+        console.log(`Found ${topics?.length || 0} incomplete topics for user ${user_id}`);
+
         if (!topics || topics.length === 0) {
             return res.json({ message: 'No topics to schedule!' });
         }
@@ -865,7 +870,7 @@ app.post('/api/generate-schedule', async (req, res) => {
         }
 
         // 4. Batch Update
-        console.log(`📝 Updating ${updates.length} topics...`);
+        console.log(`📝 Prepared ${updates.length} updates. Starting batch update...`);
         
         const BATCH_SIZE = 50;
         for (let i = 0; i < updates.length; i += BATCH_SIZE) {
@@ -876,9 +881,12 @@ app.post('/api/generate-schedule', async (req, res) => {
             
             if (updateError) {
                 console.error('Batch update error:', updateError);
+            } else {
+                console.log(`Batch ${i/BATCH_SIZE + 1} updated successfully.`);
             }
         }
 
+        console.log(`Schedule generation completed. Scheduled ${scheduledCount} topics.`);
         res.json({ success: true, count: scheduledCount });
 
     } catch (err) {

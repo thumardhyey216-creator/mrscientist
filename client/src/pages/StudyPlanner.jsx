@@ -43,7 +43,7 @@ const StudyPlanner = () => {
     const [rescheduling, setRescheduling] = useState(false);
 
     useEffect(() => {
-        if (user && currentDatabase) loadData();
+        if (user && currentDatabase) loadData(false);
     }, [user, lastUpdated, currentDatabase]);
 
     const handleReschedule = async () => {
@@ -57,7 +57,7 @@ const StudyPlanner = () => {
             });
             setShowRescheduler(false);
             setReschedulePrompt('');
-            await loadData();
+            await loadData(true);
             alert('Schedule updated successfully!');
         } catch (error) {
             console.error("Reschedule Error:", error);
@@ -67,10 +67,13 @@ const StudyPlanner = () => {
         }
     };
 
-    const loadData = async () => {
+    const loadData = async (forceRefresh = false) => {
         setLoading(true);
         try {
-            const data = await getTopics(true, user?.id, currentDatabase?.id);
+            console.log("Fetching topics for user:", user?.id, "Force refresh:", forceRefresh);
+            // If forceRefresh is true, useCache should be false
+            const data = await getTopics(!forceRefresh, user?.id, currentDatabase?.id);
+            console.log("Loaded topics data:", data);
             setTopics(data);
         } catch (error) {
             console.error("Failed to load topics:", error);
@@ -93,7 +96,7 @@ const StudyPlanner = () => {
                 prompt: genConfig.prompt
             });
             setShowGenerator(false);
-            await loadData(); // Reload to see new dates
+            await loadData(true); // Force reload to see new dates
         } catch (error) {
             console.error("Failed to generate schedule:", error);
             alert("Failed to generate schedule: " + error.message);
@@ -156,7 +159,7 @@ const StudyPlanner = () => {
         setLoading(true);
         try {
             await clearSchedule(user.id, currentDatabase?.id);
-            await loadData();
+            await loadData(true);
         } catch (error) {
             console.error("Failed to clear schedule:", error);
             const errMsg = error.response?.data?.error || error.message;
