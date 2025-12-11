@@ -226,27 +226,7 @@ app.post('/api/supabase/initialize', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-        expiryDate.setDate(expiryDate.getDate() + 7); // +7 Days validity
 
-        const { error: updateError } = await supabase.from('profiles').update({
-            subscription_status: 'trial',
-            subscription_plan: 'free_trial_7_days',
-            subscription_expiry: expiryDate.toISOString(),
-            trial_used: true,
-            updated_at: new Date().toISOString()
-        }).eq('id', user_id);
-
-        if (updateError) {
-            throw updateError;
-        }
-
-        res.json({ success: true, message: "Free trial started successfully", expiry: expiryDate });
-
-    } catch (error) {
-        console.error("Start Trial Error:", error);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // 2. Verify Payment
 app.post('/api/payment/verify', async (req, res) => {
