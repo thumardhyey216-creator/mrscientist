@@ -353,6 +353,101 @@ const Database = () => {
         setCurrentView(view);
     };
 
+    // Mobile Card View Renderer
+    const renderMobileCardView = () => (
+        <div className="md:hidden flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto space-y-3 p-2 pb-20">
+                {currentItems.map(topic => (
+                    <div key={topic.id} className="glass-card p-4 rounded-xl space-y-3 border border-[var(--border-subtle)] active:scale-[0.99] transition-transform">
+                        <div className="flex justify-between items-start gap-3">
+                            <div className="flex-1">
+                                <h3 className="font-semibold text-[var(--text-primary)] leading-tight mb-1">
+                                    {topic.topicName || 'Untitled Topic'}
+                                </h3>
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    {topic.subjectCategory && (
+                                        <span 
+                                            className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                                            style={{
+                                                backgroundColor: `${Utils.getSubjectColor(topic.subjectCategory)}20`,
+                                                color: Utils.getSubjectColor(topic.subjectCategory)
+                                            }}
+                                        >
+                                            {topic.subjectCategory}
+                                        </span>
+                                    )}
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                                        topic.priority === 'High RR' ? 'border-red-500/30 text-red-400' :
+                                        topic.priority === 'Moderate RR' ? 'border-yellow-500/30 text-yellow-400' :
+                                        'border-blue-500/30 text-blue-400'
+                                    }`}>
+                                        {topic.priority || 'No Priority'}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => navigate(`/topic/${topic.id}`)}
+                                className="p-2 bg-[var(--bg-secondary)] rounded-lg text-[var(--text-tertiary)] hover:text-[var(--primary)]"
+                            >
+                                <LayoutGrid size={18} />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[var(--border-subtle)]">
+                            <div className="space-y-1">
+                                <label className="text-[10px] uppercase text-[var(--text-tertiary)] font-semibold">Planned</label>
+                                <div className="flex items-center gap-1.5 text-xs">
+                                    <CalendarIcon size={12} className="text-[var(--text-secondary)]" />
+                                    <span>{topic.plannedDate ? new Date(topic.plannedDate).toLocaleDateString() : '-'}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] uppercase text-[var(--text-tertiary)] font-semibold">Status</label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={topic.completed === 'True'}
+                                        onChange={(e) => updateTopic(topic.id, 'completed', e.target.checked ? 'True' : 'False')}
+                                        className="w-4 h-4 rounded border-[var(--border-subtle)] bg-[var(--bg-secondary)] checked:bg-[var(--primary)]"
+                                    />
+                                    <span className={`text-xs ${topic.completed === 'True' ? 'text-[var(--success)]' : 'text-[var(--text-secondary)]'}`}>
+                                        {topic.completed === 'True' ? 'Completed' : 'Pending'}
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                {currentItems.length === 0 && (
+                    <div className="text-center py-10 text-[var(--text-secondary)]">
+                        <p>No topics found</p>
+                    </div>
+                )}
+            </div>
+            
+            {/* Mobile Pagination */}
+            <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)] flex items-center justify-between sticky bottom-0 z-10">
+                <button
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] disabled:opacity-50"
+                >
+                    <ChevronDown size={16} className="rotate-90" />
+                </button>
+                <span className="text-sm font-medium">
+                    Page {currentPage} of {totalPages}
+                </span>
+                <button
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] disabled:opacity-50"
+                >
+                    <ChevronDown size={16} className="-rotate-90" />
+                </button>
+            </div>
+        </div>
+    );
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-[calc(100vh-200px)]">
@@ -437,7 +532,7 @@ const Database = () => {
             )}
 
             {/* Toolbar */}
-            <div className="flex items-center gap-4 px-1">
+            <div className="flex flex-wrap items-center gap-4 px-1">
                 {/* Subject Filter */}
                 <div className="flex items-center gap-2">
                     <span className="text-sm text-[var(--text-secondary)]">Subject:</span>
@@ -501,9 +596,10 @@ const Database = () => {
                     onUpdateTopic={updateTopic}
                 />
             ) : (
-                <div className="flex-1 flex flex-col glass-card rounded-xl overflow-hidden">
-                    <div className="flex-1 overflow-auto table-container">
-                        <table className="w-full text-sm">
+                <>
+                    <div className="hidden md:flex flex-1 flex-col glass-card rounded-xl overflow-hidden">
+                        <div className="flex-1 overflow-auto table-container">
+                            <table className="w-full text-sm">
                             <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] z-10">
                                 <tr>
                                     <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-12">#</th>
@@ -799,7 +895,8 @@ const Database = () => {
                             </div>
                         </div>
                     </div>
-                </div>
+                    {renderMobileCardView()}
+                </>
             )}
 
             {/* Add Row Modal */}
