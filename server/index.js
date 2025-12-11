@@ -67,6 +67,8 @@ app.post('/api/payment/start-trial', async (req, res) => {
             return res.status(400).json({ error: 'Missing user_id or Supabase not configured' });
         }
 
+        console.log(`Starting trial for user: ${user_id}`);
+
         // Check if user already used trial
         const { data: profile, error: fetchError } = await supabase
             .from('profiles')
@@ -75,7 +77,10 @@ app.post('/api/payment/start-trial', async (req, res) => {
             .single();
 
         if (fetchError) {
-            return res.status(500).json({ error: 'Failed to fetch profile' });
+            console.error('Fetch profile error:', fetchError);
+            // If profile doesn't exist, maybe create it? Or return error.
+            // Usually profile is created on signup via trigger.
+            return res.status(500).json({ error: 'Failed to fetch profile', details: fetchError.message });
         }
 
         if (profile.trial_used) {
@@ -88,6 +93,139 @@ app.post('/api/payment/start-trial', async (req, res) => {
 
         // Start Trial
         const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 7); // 7 Days
+
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+                subscription_status: 'active',
+                subscription_plan: 'free_trial',
+                subscription_expiry: expiryDate.toISOString(),
+                trial_used: true
+            })
+            .eq('id', user_id);
+
+        if (updateError) {
+            console.error('Update profile error:', updateError);
+            return res.status(500).json({ error: 'Failed to activate trial', details: updateError.message });
+        }
+
+        console.log('Trial activated successfully');
+        res.json({ success: true, message: 'Trial activated' });
+
+    } catch (err) {
+        console.error('Trial Endpoint Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 1.6 Initialize User Data (Default Database)
+app.post('/api/supabase/initialize', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+    
+    try {
+        const { user_id } = req.body;
+        if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
+
+        console.log(`Initializing data for user ${user_id}...`);
+
+        // 1. Check/Create Database
+        const { data: dbs, error: dbError } = await supabase
+            .from('user_databases')
+            .select('*')
+            .eq('user_id', user_id);
+
+        if (dbError) throw dbError;
+
+        let databaseId;
+        if (dbs && dbs.length > 0) {
+            console.log('User already has a database.');
+            databaseId = dbs[0].id;
+        } else {
+            console.log('Creating default database...');
+            const { data: newDb, error: createError } = await supabase
+                .from('user_databases')
+                .insert([{
+                    user_id: user_id,
+                    name: 'Default Study Plan',
+                    description: 'Auto-generated from Master Syllabus',
+                    icon: '📚'
+                }])
+                .select()
+                .single();
+            
+            if (createError) throw createError;
+            databaseId = newDb.id;
+        }
+
+        // 2. Check if topics exist
+        const { count, error: countError } = await supabase
+            .from('topics')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user_id)
+            .eq('database_id', databaseId);
+        
+        if (countError) throw countError;
+
+        if (count > 0) {
+            console.log(`User already has ${count} topics.`);
+            return res.json({ success: true, message: 'Data already initialized', database_id: databaseId });
+        }
+
+        // 3. Fetch Master Syllabus
+        // Use raw query or select if table is exposed
+        // Note: master_syllabus might not be exposed to PostgREST, so we use service role key in backend if needed.
+        // But here supabase client uses what? index.js uses process.env.SUPABASE_KEY which is usually service role in backend.
+        // Wait, in client/src/config.js it is ANON key. In server/index.js it is SUPABASE_KEY.
+        // Assuming server has service_role key or at least full access.
+        
+        const { data: masterData, error: masterError } = await supabase
+            .from('master_syllabus')
+            .select('*');
+
+        if (masterError) throw masterError;
+        
+        if (!masterData || masterData.length === 0) {
+            return res.status(404).json({ error: 'Master syllabus not found' });
+        }
+
+        console.log(`Found ${masterData.length} master topics. copying...`);
+
+        // 4. Copy Topics
+        // Batch insert
+        const newTopics = masterData.map(topic => {
+            // Exclude id, timestamps, notion_id
+            const { id, created_at, updated_at, notion_id, ...rest } = topic;
+            return {
+                ...rest,
+                user_id: user_id,
+                database_id: databaseId,
+                completed: 'False',
+                // Explicitly set notion_id to null or a unique value if unique constraint exists.
+                // If unique constraint on notion_id, we must ensure it's null or unique.
+                // If notion_id is unique, multiple nulls are allowed in Postgres? Yes.
+                notion_id: null 
+            };
+        });
+
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < newTopics.length; i += BATCH_SIZE) {
+            const batch = newTopics.slice(i, i + BATCH_SIZE);
+            const { error: insertError } = await supabase.from('topics').insert(batch);
+            if (insertError) {
+                console.error('Batch insert error:', insertError);
+                throw insertError;
+            }
+        }
+
+        console.log('Initialization complete.');
+        res.json({ success: true, count: newTopics.length, database_id: databaseId });
+
+    } catch (err) {
+        console.error('Initialization Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
         expiryDate.setDate(expiryDate.getDate() + 7); // +7 Days validity
 
         const { error: updateError } = await supabase.from('profiles').update({

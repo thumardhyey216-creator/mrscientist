@@ -627,4 +627,25 @@ export const syncFromNotion = async () => {
     return response.data;
 };
 
+// Payment & Subscription
+export const startTrial = async (userId) => {
+    const response = await api.post('/api/payment/start-trial', { user_id: userId });
+    return response.data;
+};
+
+export const getPaymentKey = async () => {
+    const response = await api.get('/api/payment/get-key');
+    return response.data;
+};
+
+export const createPaymentOrder = async (amount) => {
+    const response = await api.post('/api/payment/create-order', { amount });
+    return response.data;
+};
+
+export const verifyPayment = async (paymentData) => {
+    const response = await api.post('/api/payment/verify', paymentData);
+    return response.data;
+};
+
 export default backendAPI;

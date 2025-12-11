@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { createPaymentOrder, verifyPayment, startTrial } from '../services/api';
 import { Check, CreditCard, Loader2, ShieldCheck } from 'lucide-react';
-import axios from 'axios';
 
 const Subscription = () => {
     const { user } = useAuth();
@@ -16,10 +16,7 @@ const Subscription = () => {
 
         try {
             // 1. Create Order
-            const { data: order } = await axios.post('http://localhost:8000/api/payment/create-order', {
-                amount: 25000, // 250 Rs (50% Discount)
-                currency: 'INR'
-            });
+            const order = await createPaymentOrder(25000); // 250 Rs (50% Discount)
 
             // 2. Open Razorpay
             const options = {
@@ -32,7 +29,7 @@ const Subscription = () => {
                 handler: async function (response) {
                     try {
                         // 3. Verify Payment
-                        const verifyRes = await axios.post('http://localhost:8000/api/payment/verify', {
+                        const verifyRes = await verifyPayment({
                             razorpay_order_id: response.razorpay_order_id,
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_signature: response.razorpay_signature,
@@ -40,7 +37,7 @@ const Subscription = () => {
                             amount: 25000 // Send amount to backend for plan confirmation
                         });
 
-                        if (verifyRes.data.success) {
+                        if (verifyRes.success) {
                             alert('Subscription Activated Successfully! 🎉');
                             navigate('/dashboard');
                         }
@@ -78,9 +75,7 @@ const Subscription = () => {
         setLoading(true);
         setError('');
         try {
-            await axios.post('http://localhost:8000/api/payment/start-trial', {
-                user_id: user.id
-            });
+            await startTrial(user.id);
             alert('7-Day Free Trial Activated! 🚀');
             navigate('/dashboard');
         } catch (err) {
