@@ -7,11 +7,11 @@ import { getTopics } from '../services/api';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell, AreaChart, Area,
-    RadialBarChart, RadialBar
+    RadialBarChart, RadialBar, LineChart, Line, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
-import { CheckCircle2, Clock, AlertTriangle, BookOpen, TrendingUp, Calendar as CalendarIcon } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, BookOpen, TrendingUp, Calendar as CalendarIcon, Zap, Brain, Target } from 'lucide-react';
 import { Utils } from '../utils';
-import { startOfYear, endOfYear, eachDayOfInterval, format, isSameDay, parseISO, isPast, isFuture, addDays } from 'date-fns';
+import { startOfYear, endOfYear, eachDayOfInterval, format, isSameDay, parseISO, isPast, isFuture, addDays, subDays, differenceInDays, compareAsc, startOfDay } from 'date-fns';
 
 // const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); // Removed
 
@@ -91,7 +91,148 @@ const Analytics = () => {
         return { total, completed, pending, completionRate, totalDuration, backlog };
     }, [topics]);
 
-    // Data for Subject Progress (Stacked Bar)
+    // 1. Prediction & Burnup Data
+    const predictionStats = useMemo(() => {
+        const completedTopics = topics.filter(t => t.completed === 'True');
+        
+        // Calculate Velocity (Last 14 days)
+        const today = new Date();
+        const twoWeeksAgo = subDays(today, 14);
+        const recentCompleted = completedTopics.filter(t => 
+            t.lastEditedTime && new Date(t.lastEditedTime) >= twoWeeksAgo
+        ).length;
+        
+        const velocity = recentCompleted / 14; // topics per day
+        const remaining = topics.length - completedTopics.length;
+        const daysToFinish = velocity > 0 ? Math.ceil(remaining / velocity) : 0;
+        const projectedDate = velocity > 0 ? addDays(today, daysToFinish) : null;
+
+        // Generate Burnup Chart Data
+        // Get all unique dates from planned and actual
+        const dates = new Set();
+        topics.forEach(t => {
+            if (t.plannedDate) dates.add(t.plannedDate.split('T')[0]);
+            if (t.completed === 'True' && t.lastEditedTime) dates.add(t.lastEditedTime.split('T')[0]);
+        });
+        
+        const sortedDates = Array.from(dates).sort();
+        if (sortedDates.length === 0) return { velocity, daysToFinish, projectedDate, burnupData: [] };
+
+        const startDate = parseISO(sortedDates[0]);
+        const endDate = projectedDate && daysToFinish < 365 ? projectedDate : addDays(today, 30); // Cap projection for chart
+        
+        const chartDates = eachDayOfInterval({ start: startDate, end: endDate });
+        
+        let cumulativePlanned = 0;
+        let cumulativeActual = 0;
+        
+        const burnupData = chartDates.map(date => {
+            const dateStr = format(date, 'yyyy-MM-dd');
+            
+            // Planned Cumulative
+            const dayPlanned = topics.filter(t => t.plannedDate && t.plannedDate.startsWith(dateStr)).length;
+            cumulativePlanned += dayPlanned;
+            
+            // Actual Cumulative (only up to today)
+            let actualValue = null;
+            if (date <= today) {
+                const dayCompleted = topics.filter(t => 
+                    t.completed === 'True' && 
+                    t.lastEditedTime && 
+                    t.lastEditedTime.startsWith(dateStr)
+                ).length;
+                cumulativeActual += dayCompleted;
+                actualValue = cumulativeActual;
+            } else if (velocity > 0) {
+                // Projected
+                actualValue = cumulativeActual + (velocity * differenceInDays(date, today));
+            }
+
+            return {
+                date: format(date, 'MMM dd'),
+                Planned: cumulativePlanned,
+                Actual: actualValue,
+                isProjected: date > today
+            };
+        });
+
+        return { velocity, daysToFinish, projectedDate, burnupData };
+    }, [topics]);
+
+    // 2. Subject Mastery (Radar)
+    const subjectRadarData = useMemo(() => {
+        const data = {};
+        topics.forEach(t => {
+            const subject = t.subjectCategory || 'Uncategorized';
+            if (!data[subject]) data[subject] = { subject, total: 0, completed: 0, revised: 0, practiced: 0 };
+            
+            data[subject].total++;
+            if (t.completed === 'True') data[subject].completed++;
+            if (t.firstRevision === 'TRUE') data[subject].revised++;
+            if (t.mcqSolvingDate) data[subject].practiced++;
+        });
+
+        return Object.values(data).map(d => ({
+            subject: d.subject,
+            Completion: Math.round((d.completed / d.total) * 100) || 0,
+            Revision: d.completed > 0 ? Math.round((d.revised / d.completed) * 100) : 0,
+            Practice: Math.round((d.practiced / d.total) * 100) || 0,
+            fullMark: 100
+        })).slice(0, 6); // Limit to top 6 for clean radar, or handle all
+    }, [topics]);
+
+    // 3. Retention Health Score
+    const retentionStats = useMemo(() => {
+        const completedTopics = topics.filter(t => t.completed === 'True');
+        if (completedTopics.length === 0) return { score: 100, atRisk: 0 };
+
+        const today = new Date();
+        const atRisk = completedTopics.filter(t => {
+            // Considered "At Risk" if completed > 7 days ago AND 1st Revision not done
+            // Using lastEditedTime as proxy for completion date if needed, or plannedDate
+            const dateRef = t.lastEditedTime ? parseISO(t.lastEditedTime) : (t.plannedDate ? parseISO(t.plannedDate) : null);
+            if (!dateRef) return false;
+            
+            return differenceInDays(today, dateRef) > 7 && t.firstRevision !== 'TRUE';
+        }).length;
+
+        const score = Math.max(0, Math.round(100 - ((atRisk / completedTopics.length) * 100)));
+        return { score, atRisk };
+    }, [topics]);
+
+    // 4. Streak & Activity
+    const streakStats = useMemo(() => {
+        // Calculate current streak based on lastEditedTime of ANY topic (showing activity)
+        const today = new Date();
+        const activityDates = new Set();
+        
+        topics.forEach(t => {
+            if (t.lastEditedTime) activityDates.add(t.lastEditedTime.split('T')[0]);
+        });
+        
+        let streak = 0;
+        let checkDate = today;
+        
+        // Simple check for last 365 days
+        while (streak < 365) {
+            const dateStr = format(checkDate, 'yyyy-MM-dd');
+            if (activityDates.has(dateStr)) {
+                streak++;
+                checkDate = subDays(checkDate, 1);
+            } else {
+                // Allow 1 day gap? No, strict streak for now.
+                // Check if today has no activity yet, maybe check yesterday to start streak
+                if (streak === 0 && isSameDay(checkDate, today)) {
+                    checkDate = subDays(checkDate, 1);
+                    continue;
+                }
+                break;
+            }
+        }
+        return streak;
+    }, [topics]);
+
+    // Data for Subject Progress (Stacked Bar) - KEEPING for backward compat or alternative view
     const subjectProgressData = useMemo(() => {
         const data = {};
         topics.forEach(t => {
@@ -103,13 +244,22 @@ const Analytics = () => {
         return Object.values(data).sort((a, b) => (b.Completed + b.Pending) - (a.Completed + a.Pending));
     }, [topics]);
 
-    // Data for Priority Breakdown
+    // Data for Priority Breakdown (High Yield Analysis)
     const priorityData = useMemo(() => {
-        const counts = { 'High RR': 0, 'Moderate RR': 0, 'Low RR': 0 };
+        const data = [
+            { name: 'High RR', value: 0, completed: 0 },
+            { name: 'Moderate RR', value: 0, completed: 0 },
+            { name: 'Low RR', value: 0, completed: 0 }
+        ];
+        
         topics.forEach(t => {
-            if (counts[t.priority] !== undefined) counts[t.priority]++;
+            const idx = data.findIndex(d => d.name === t.priority);
+            if (idx !== -1) {
+                data[idx].value++;
+                if (t.completed === 'True') data[idx].completed++;
+            }
         });
-        return Object.entries(counts).map(([name, value]) => ({ name, value }));
+        return data;
     }, [topics]);
 
     // Data for Weekly Workload Projection
@@ -130,7 +280,7 @@ const Analytics = () => {
         });
     }, [topics]);
 
-    // Heatmap Data (Simplified for grid)
+    // Heatmap Data (Activity Density)
     const heatmapData = useMemo(() => {
         const today = new Date();
         const yearStart = startOfYear(today);
@@ -139,14 +289,13 @@ const Analytics = () => {
 
         const activityMap = {};
         topics.forEach(t => {
-            if (t.completed === 'True' && t.lastEditedTime) { // Assuming updated_at approximates completion time for now, or use a completed_at if available
-                // If we don't have a completed_at, we might use planned_date for 'planned' activity density
-                // Let's use planned_date to show schedule density for now
-            }
-            if (t.plannedDate) {
-                const dateStr = t.plannedDate.split('T')[0];
+            // Count actual activity (edits or completion)
+            if (t.lastEditedTime) {
+                const dateStr = t.lastEditedTime.split('T')[0];
                 activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
             }
+            // Also count completion if distinct from edit (usually same, but just in case)
+            // If we want to show 'Planned' density, we could add that, but 'Consistency' usually means 'Done'
         });
 
         return days.map(day => {
@@ -260,60 +409,137 @@ const Analytics = () => {
                 />
             </div>
 
-            {/* Main Charts Row 1 */}
+            {/* Smart Insights Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Subject Progress */}
+                {/* Predictive Completion */}
                 <div className="glass-card p-6 lg:col-span-2 rounded-2xl border border-[var(--border-subtle)]">
-                    <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                        <TrendingUp size={20} className="text-[var(--primary)]" />
-                        Subject Mastery
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                        <Target size={20} className="text-[var(--primary)]" />
+                        Predictive Syllabus Completion
                     </h3>
-                    <div className="overflow-x-auto pb-2 custom-scrollbar">
-                        <div style={{ width: Math.max(1000, subjectProgressData.length * 50), height: 300 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={subjectProgressData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.grid} vertical={false} />
-                                    <XAxis dataKey="subject" stroke={CHART_THEME.text} tick={{ fontSize: 12 }} interval={0} angle={-15} textAnchor="end" height={60} />
-                                    <YAxis stroke={CHART_THEME.text} tick={{ fontSize: 12 }} />
-                                    <RechartsTooltip content={<CustomTooltip />} />
-                                    <Legend />
-                                    <Bar dataKey="Completed" stackId="a" fill={COLORS.success} radius={[0, 0, 0, 0]} />
-                                    <Bar dataKey="Pending" stackId="a" fill={COLORS.background} stroke={COLORS.neutral} strokeWidth={1} radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
+                    <p className="text-sm text-[var(--text-secondary)] mb-6">
+                        At your current pace of <span className="text-[var(--primary)] font-bold">{predictionStats.velocity.toFixed(1)} topics/day</span>, 
+                        you are projected to finish by <span className="text-[var(--primary)] font-bold">{predictionStats.projectedDate ? format(predictionStats.projectedDate, 'MMM dd, yyyy') : '...'}</span>.
+                    </p>
+                    <div className="h-[300px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={predictionStats.burnupData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.grid} vertical={false} />
+                                <XAxis dataKey="date" stroke={CHART_THEME.text} tick={{ fontSize: 12 }} minTickGap={30} />
+                                <YAxis stroke={CHART_THEME.text} tick={{ fontSize: 12 }} />
+                                <RechartsTooltip content={<CustomTooltip />} />
+                                <Legend />
+                                <Line type="monotone" dataKey="Planned" stroke={COLORS.neutral} strokeDasharray="5 5" dot={false} strokeWidth={2} />
+                                <Line type="monotone" dataKey="Actual" stroke={COLORS.success} strokeWidth={3} dot={false} connectNulls />
+                            </LineChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
 
-                {/* Priority Breakdown */}
+                {/* Health & Streak Column */}
+                <div className="flex flex-col gap-6">
+                    {/* Retention Health */}
+                    <div className="glass-card p-6 rounded-2xl border border-[var(--border-subtle)] flex-1 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div className={`absolute inset-0 opacity-10 ${retentionStats.score > 80 ? 'bg-green-500' : retentionStats.score > 50 ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 z-10">
+                            <Brain size={20} className="text-[var(--primary)]" />
+                            Retention Health
+                        </h3>
+                        <div className="relative z-10 flex flex-col items-center">
+                            <div className={`text-5xl font-bold mb-2 ${retentionStats.score > 80 ? 'text-green-400' : retentionStats.score > 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                {retentionStats.score}%
+                            </div>
+                            <p className="text-sm text-[var(--text-secondary)] text-center">
+                                {retentionStats.atRisk} topics entering<br/>"Forgetting Zone"
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Streak */}
+                    <div className="glass-card p-6 rounded-2xl border border-[var(--border-subtle)] flex-1 flex flex-col items-center justify-center relative overflow-hidden">
+                         <div className="absolute inset-0 bg-orange-500/5"></div>
+                         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 z-10">
+                            <Zap size={20} className="text-orange-500" />
+                            Consistency Streak
+                        </h3>
+                        <div className="relative z-10 flex flex-col items-center">
+                             <div className="text-5xl font-bold mb-2 text-orange-400">
+                                {streakStats} <span className="text-xl text-[var(--text-secondary)]">Days</span>
+                            </div>
+                            <p className="text-sm text-[var(--text-secondary)]">Keep it burning!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Charts Row 2 (Radar & Priority) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Subject Mastery Radar */}
+                <div className="glass-card p-6 lg:col-span-2 rounded-2xl border border-[var(--border-subtle)]">
+                    <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
+                        <TrendingUp size={20} className="text-[var(--primary)]" />
+                        Subject Mastery Radar
+                    </h3>
+                    <div className="h-[350px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={subjectRadarData}>
+                                <PolarGrid stroke={CHART_THEME.grid} />
+                                <PolarAngleAxis dataKey="subject" tick={{ fill: CHART_THEME.text, fontSize: 12 }} />
+                                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: CHART_THEME.text, fontSize: 10 }} />
+                                <Radar name="Completion %" dataKey="Completion" stroke={COLORS.primary} fill={COLORS.primary} fillOpacity={0.3} />
+                                <Radar name="Revision %" dataKey="Revision" stroke={COLORS.secondary} fill={COLORS.secondary} fillOpacity={0.3} />
+                                <Legend />
+                                <RechartsTooltip content={<CustomTooltip />} />
+                            </RadarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* High Yield Focus Analysis */}
                 <div className="glass-card p-6 rounded-2xl border border-[var(--border-subtle)]">
-                    <h3 className="text-lg font-semibold mb-6">Priority Distribution</h3>
+                    <h3 className="text-lg font-semibold mb-6">High-Yield Focus</h3>
                     <div className="h-[300px] w-full flex flex-col items-center justify-center">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
+                                {/* Inner Pie: Completed vs Pending (Simulated by Priority Completion) */}
                                 <Pie
                                     data={priorityData}
+                                    dataKey="completed"
+                                    nameKey="name"
                                     cx="50%"
                                     cy="50%"
-                                    innerRadius={60}
-                                    outerRadius={90}
-                                    paddingAngle={5}
-                                    dataKey="value"
+                                    innerRadius={40}
+                                    outerRadius={60}
+                                    fill={COLORS.success}
+                                    stroke="none"
                                 >
-                                    {priorityData.map((entry, index) => {
-                                        let fill = COLORS.neutral;
-                                        if (entry.name === 'High RR') fill = COLORS.danger;
-                                        if (entry.name === 'Moderate RR') fill = COLORS.warning;
-                                        if (entry.name === 'Low RR') fill = COLORS.info;
-                                        return <Cell key={`cell-${index}`} fill={fill} stroke="none" />;
-                                    })}
+                                     {priorityData.map((entry, index) => (
+                                        <Cell key={`cell-inner-${index}`} fill={entry.name === 'High RR' ? '#ef4444' : entry.name === 'Moderate RR' ? '#eab308' : '#3b82f6'} fillOpacity={0.8} />
+                                    ))}
+                                </Pie>
+                                {/* Outer Pie: Total Distribution */}
+                                <Pie
+                                    data={priorityData}
+                                    dataKey="value"
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={70}
+                                    outerRadius={90}
+                                    fill={COLORS.neutral}
+                                    stroke="none"
+                                    opacity={0.3}
+                                >
+                                    {priorityData.map((entry, index) => (
+                                        <Cell key={`cell-outer-${index}`} fill={entry.name === 'High RR' ? '#ef4444' : entry.name === 'Moderate RR' ? '#eab308' : '#3b82f6'} />
+                                    ))}
                                 </Pie>
                                 <RechartsTooltip content={<CustomTooltip />} />
                                 <Legend verticalAlign="bottom" height={36} />
                             </PieChart>
                         </ResponsiveContainer>
                         <div className="text-center mt-[-10px]">
-                            <p className="text-xs text-[var(--text-secondary)]">Based on topic counts</p>
+                            <p className="text-xs text-[var(--text-secondary)]">Inner: Completed | Outer: Total</p>
                         </div>
                     </div>
                 </div>
