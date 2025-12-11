@@ -252,7 +252,8 @@ const Database = () => {
     };
 
     // Apply view filters and subject filter
-    const getFilteredTopics = useCallback(() => {
+    const filteredTopics = React.useMemo(() => {
+        if (!topics) return [];
         let filtered = [...topics];
 
         // Apply search query
@@ -320,7 +321,27 @@ const Database = () => {
         return filtered;
     }, [topics, searchQuery, currentView.filters, filterSubject, advancedFilters]);
 
-    const filteredTopics = getFilteredTopics();
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 50;
+
+    // Reset pagination when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, currentView, filterSubject, advancedFilters]);
+    
+    // Get current items
+    const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
+    const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
+    const currentItems = filteredTopics.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredTopics.length / ITEMS_PER_PAGE);
+
+    const handlePageChange = (pageNumber) => {
+        setCurrentPage(pageNumber);
+        // Scroll to top of table
+        const tableContainer = document.querySelector('.table-container');
+        if (tableContainer) tableContainer.scrollTop = 0;
+    };
 
     // Handle search
     const handleSearch = useCallback((query) => {
@@ -480,38 +501,39 @@ const Database = () => {
                     onUpdateTopic={updateTopic}
                 />
             ) : (
-                <div className="flex-1 overflow-auto glass-card rounded-xl">
-                    <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] z-10">
-                            <tr>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-12">#</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[300px]">Topic Name</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[200px]">Subject Category</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Priority</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Source</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-28">Duration</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">Planned Date</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">MCQ Done</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">1st Rev Status</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">1st Rev Date</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">2nd Rev Status</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">2nd Rev Date</th>
-                                <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Completed</th>
-                                {/* Custom Columns */}
-                                {customColumns.map(col => (
-                                    <th key={col.id} className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[150px]">
-                                        {col.column_name}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredTopics.map((topic, idx) => (
-                                <tr
-                                    key={topic.id}
-                                    className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
-                                >
-                                    <td className="p-3 text-[var(--text-tertiary)]">{topic.no || idx + 1}</td>
+                <div className="flex-1 flex flex-col glass-card rounded-xl overflow-hidden">
+                    <div className="flex-1 overflow-auto table-container">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] z-10">
+                                <tr>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-12">#</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[300px]">Topic Name</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[200px]">Subject Category</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Priority</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Source</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-28">Duration</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">Planned Date</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">MCQ Done</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">1st Rev Status</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">1st Rev Date</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">2nd Rev Status</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">2nd Rev Date</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Completed</th>
+                                    {/* Custom Columns */}
+                                    {customColumns.map(col => (
+                                        <th key={col.id} className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[150px]">
+                                            {col.column_name}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {currentItems.map((topic, idx) => (
+                                    <tr
+                                        key={topic.id}
+                                        className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                                    >
+                                        <td className="p-3 text-[var(--text-tertiary)]">{topic.no || indexOfFirstItem + idx + 1}</td>
                                     <td className="p-3">
                                         <div className="flex items-center gap-2">
                                             <div className="flex-1">
@@ -670,7 +692,56 @@ const Database = () => {
                         </tbody>
                     </table>
                 </div>
-            )}
+                {/* Pagination Controls */}
+                <div className="p-4 border-t border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-secondary)]">
+                    <div className="text-sm text-[var(--text-secondary)]">
+                        Showing {filteredTopics.length > 0 ? indexOfFirstItem + 1 : 0} to {Math.min(indexOfLastItem, filteredTopics.length)} of {filteredTopics.length} topics
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => handlePageChange(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1 text-sm rounded-md bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Previous
+                        </button>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum;
+                            if (totalPages <= 5) {
+                                pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                                pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                                pageNum = totalPages - 4 + i;
+                            } else {
+                                pageNum = currentPage - 2 + i;
+                            }
+                            
+                            return (
+                                <button
+                                    key={pageNum}
+                                    onClick={() => handlePageChange(pageNum)}
+                                    className={`w-8 h-8 flex items-center justify-center rounded-md text-sm transition-colors ${
+                                        currentPage === pageNum
+                                            ? 'bg-[var(--primary)] text-white'
+                                            : 'bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--primary)]'
+                                    }`}
+                                >
+                                    {pageNum}
+                                </button>
+                            );
+                        })}
+                        <button
+                            onClick={() => handlePageChange(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1 text-sm rounded-md bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
             {/* Add Column Modal */}
             {showAddColumnModal && (
