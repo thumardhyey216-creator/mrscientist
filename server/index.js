@@ -59,10 +59,61 @@ app.post('/api/payment/create-order', async (req, res) => {
     }
 });
 
+// 1.5 Start Free Trial
+app.post('/api/payment/start-trial', async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        if (!supabase || !user_id) {
+            return res.status(400).json({ error: 'Missing user_id or Supabase not configured' });
+        }
+
+        // Check if user already used trial
+        const { data: profile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('trial_used, subscription_status')
+            .eq('id', user_id)
+            .single();
+
+        if (fetchError) {
+            return res.status(500).json({ error: 'Failed to fetch profile' });
+        }
+
+        if (profile.trial_used) {
+            return res.status(403).json({ error: 'Free trial already used' });
+        }
+
+        if (profile.subscription_status === 'active') {
+            return res.status(400).json({ error: 'Subscription already active' });
+        }
+
+        // Start Trial
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 7); // +7 Days validity
+
+        const { error: updateError } = await supabase.from('profiles').update({
+            subscription_status: 'trial',
+            subscription_plan: 'free_trial_7_days',
+            subscription_expiry: expiryDate.toISOString(),
+            trial_used: true,
+            updated_at: new Date().toISOString()
+        }).eq('id', user_id);
+
+        if (updateError) {
+            throw updateError;
+        }
+
+        res.json({ success: true, message: "Free trial started successfully", expiry: expiryDate });
+
+    } catch (error) {
+        console.error("Start Trial Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // 2. Verify Payment
 app.post('/api/payment/verify', async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, user_id } = req.body;
+        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, user_id, amount } = req.body;
 
         const body = razorpay_order_id + "|" + razorpay_payment_id;
 
@@ -76,10 +127,14 @@ app.post('/api/payment/verify', async (req, res) => {
         if (isAuthentic) {
             // Update User Subscription in Supabase
             if (supabase && user_id) {
+                // Determine plan based on amount (default to monthly_500 if not provided or different)
+                const planName = amount === 25000 ? 'monthly_250_discount' : 'monthly_500';
+                const paidAmount = amount || 50000;
+
                 // 1. Log Payment
                 await supabase.from('payments').insert({
                     user_id,
-                    amount: 50000,
+                    amount: paidAmount,
                     razorpay_order_id,
                     razorpay_payment_id,
                     status: 'paid'
@@ -92,7 +147,7 @@ app.post('/api/payment/verify', async (req, res) => {
                 await supabase.from('profiles').upsert({
                     id: user_id,
                     subscription_status: 'active',
-                    subscription_plan: 'monthly_500',
+                    subscription_plan: planName,
                     subscription_expiry: expiryDate.toISOString(),
                     updated_at: new Date().toISOString()
                 });
@@ -774,17 +829,20 @@ app.post('/api/generate-schedule', async (req, res) => {
                 }
             }
 
-            // Calculate Dates
+            // Calculate Dates (Day 1 = planned)
             const planned = new Date(currentDate);
             
+            // Day 3 (MCQ) -> planned + 2 days
             const mcq = new Date(planned);
-            mcq.setDate(mcq.getDate() + 1); // +1 day
+            mcq.setDate(mcq.getDate() + 2);
 
+            // Day 7 (Revision) -> planned + 6 days
             const rev1 = new Date(planned);
-            rev1.setDate(rev1.getDate() + 7); // +7 days
+            rev1.setDate(rev1.getDate() + 6);
 
+            // Day 21 (2nd Revision) -> planned + 20 days
             const rev2 = new Date(planned);
-            rev2.setDate(rev2.getDate() + 28); // +28 days
+            rev2.setDate(rev2.getDate() + 20);
 
             // Update Custom Data with Preference
             const newCustomData = {
@@ -826,6 +884,144 @@ app.post('/api/generate-schedule', async (req, res) => {
     } catch (err) {
         console.error('Scheduling Error:', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// --- AI Rescheduling Endpoint ---
+app.post('/api/reschedule', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+
+    try {
+        const { user_id, database_id, prompt } = req.body;
+        if (!user_id || !prompt) return res.status(400).json({ error: 'Missing user_id or prompt' });
+
+        console.log(`🔄 AI Rescheduling for user ${user_id} with prompt: "${prompt}"`);
+
+        // 1. Fetch Future Topics
+        const today = new Date().toISOString().split('T')[0];
+        let query = supabase
+            .from('topics')
+            .select('id, topic_name, subject_category, priority, planned_date, duration')
+            .eq('user_id', user_id)
+            .gte('planned_date', today)
+            .order('planned_date', { ascending: true });
+
+        if (database_id) query = query.eq('database_id', database_id);
+
+        const { data: topics, error } = await query;
+        if (error) throw error;
+
+        if (!topics || topics.length === 0) {
+            return res.json({ message: 'No future topics found to reschedule.' });
+        }
+
+        // 2. Prepare Data for AI
+        const simplifiedTopics = topics.map(t => ({
+            id: t.id,
+            name: t.topic_name,
+            subject: t.subject_category,
+            current_date: t.planned_date,
+            priority: t.priority
+        }));
+
+        // 3. Ask AI
+        const aiPrompt = `
+            You are an intelligent study scheduler. The user wants to reschedule their existing plan.
+            
+            User Request: "${prompt}"
+            
+            Current Schedule (JSON):
+            ${JSON.stringify(simplifiedTopics)}
+            
+            Task:
+            1. Analyze the user's request (e.g., "Push everything by 1 day", "Move Biology to next week", "Free up this weekend").
+            2. Return a JSON array of objects with the updated "planned_date" for the topics that need changing.
+            3. You MUST keep the "id" exactly as provided.
+            4. Format dates as "YYYY-MM-DD".
+            5. If a topic's date doesn't change, you can omit it or include it with the same date.
+            
+            Output Format:
+            [
+                { "id": "uuid1", "planned_date": "2024-12-01" },
+                { "id": "uuid2", "planned_date": "2024-12-02" }
+            ]
+            
+            RETURN ONLY THE JSON ARRAY. NO MARKDOWN.
+        `;
+
+        const result = await model.generateContent(aiPrompt);
+        let responseText = result.response.text();
+        
+        console.log("🤖 AI Reschedule Response:", responseText.substring(0, 200) + "...");
+
+        // Clean JSON
+        responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        const firstBracket = responseText.indexOf('[');
+        const lastBracket = responseText.lastIndexOf(']');
+        if (firstBracket !== -1 && lastBracket !== -1) {
+            responseText = responseText.substring(firstBracket, lastBracket + 1);
+        }
+
+        let updates;
+        try {
+            updates = JSON.parse(responseText);
+        } catch (e) {
+            console.error("JSON Parse Error:", e);
+            return res.status(500).json({ error: "AI response was not valid JSON" });
+        }
+
+        if (!Array.isArray(updates)) {
+            return res.status(500).json({ error: "AI did not return an array" });
+        }
+
+        // 4. Update Database
+        const batchUpdates = [];
+        
+        // Helper to recalculate revision dates
+        const calculateRevisions = (plannedDateStr) => {
+             const planned = new Date(plannedDateStr);
+             const mcq = new Date(planned); mcq.setDate(mcq.getDate() + 2);
+             const rev1 = new Date(planned); rev1.setDate(rev1.getDate() + 6);
+             const rev2 = new Date(planned); rev2.setDate(rev2.getDate() + 20);
+             return {
+                 mcq_solving_date: mcq.toISOString().split('T')[0],
+                 first_revision_date: rev1.toISOString().split('T')[0],
+                 second_revision_date: rev2.toISOString().split('T')[0]
+             };
+        };
+
+        for (const update of updates) {
+            if (update.id && update.planned_date) {
+                const revisions = calculateRevisions(update.planned_date);
+                batchUpdates.push({
+                    id: update.id,
+                    planned_date: update.planned_date,
+                    ...revisions,
+                    updated_at: new Date().toISOString()
+                });
+            }
+        }
+
+        console.log(`📝 Applying ${batchUpdates.length} updates...`);
+        
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < batchUpdates.length; i += BATCH_SIZE) {
+            const batch = batchUpdates.slice(i, i + BATCH_SIZE);
+            const { error: updateError } = await supabase
+                .from('topics')
+                .upsert(batch); 
+            
+            if (updateError) {
+                console.error('Batch update error:', updateError);
+                throw updateError;
+            }
+        }
+
+        res.json({ success: true, count: batchUpdates.length, message: `Rescheduled ${batchUpdates.length} topics.` });
+
+    } catch (error) {
+        console.error("Reschedule Error:", error);
+        res.status(500).json({ error: error.message });
     }
 });
 

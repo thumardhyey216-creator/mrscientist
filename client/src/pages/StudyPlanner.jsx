@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDatabase } from '../context/DatabaseContext';
-import { getTopics, generateSchedule, clearSchedule } from '../services/api';
+import { getTopics, generateSchedule, clearSchedule, reschedule } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { 
     format, startOfMonth, endOfMonth, eachDayOfInterval, 
@@ -36,10 +36,36 @@ const StudyPlanner = () => {
         prompt: ''
     });
     const [generating, setGenerating] = useState(false);
+    
+    // Rescheduler State
+    const [showRescheduler, setShowRescheduler] = useState(false);
+    const [reschedulePrompt, setReschedulePrompt] = useState('');
+    const [rescheduling, setRescheduling] = useState(false);
 
     useEffect(() => {
         if (user && currentDatabase) loadData();
     }, [user, lastUpdated, currentDatabase]);
+
+    const handleReschedule = async () => {
+        if (!reschedulePrompt.trim()) return;
+        setRescheduling(true);
+        try {
+            await reschedule({
+                user_id: user.id,
+                database_id: currentDatabase?.id,
+                prompt: reschedulePrompt
+            });
+            setShowRescheduler(false);
+            setReschedulePrompt('');
+            await loadData();
+            alert('Schedule updated successfully!');
+        } catch (error) {
+            console.error("Reschedule Error:", error);
+            alert("Failed to reschedule: " + error.message);
+        } finally {
+            setRescheduling(false);
+        }
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -173,6 +199,14 @@ const StudyPlanner = () => {
                         title="Clear Schedule"
                     >
                         <Trash2 size={18} />
+                    </button>
+
+                    <button 
+                        onClick={() => setShowRescheduler(true)}
+                        className="btn btn-secondary flex items-center gap-2"
+                    >
+                        <RotateCcw size={18} />
+                        <span>Reschedule</span>
                     </button>
 
                     <button 
@@ -481,6 +515,54 @@ const StudyPlanner = () => {
                                     </div>
                                 ))
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reschedule Modal */}
+            {showRescheduler && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="glass-panel w-full max-w-md p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold flex items-center gap-2">
+                                <RotateCcw className="text-[var(--primary)]" size={24} />
+                                Reschedule with AI
+                            </h3>
+                            <button onClick={() => setShowRescheduler(false)} className="p-1 hover:bg-[var(--bg-hover)] rounded">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <p className="text-[var(--text-secondary)] text-sm mb-4">
+                            Tell the AI how you want to adjust your schedule. It will intelligently move your future tasks.
+                        </p>
+
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium mb-2">Instructions</label>
+                            <textarea
+                                value={reschedulePrompt}
+                                onChange={(e) => setReschedulePrompt(e.target.value)}
+                                placeholder="e.g., 'I was sick yesterday, push everything by 1 day' or 'Move all Physiology topics to next week'"
+                                className="w-full h-32 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] resize-none"
+                            />
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setShowRescheduler(false)}
+                                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-primary)] hover:bg-[var(--bg-secondary)]"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleReschedule}
+                                disabled={rescheduling || !reschedulePrompt.trim()}
+                                className="flex-1 btn btn-primary flex items-center justify-center gap-2"
+                            >
+                                {rescheduling ? <Loader2 className="animate-spin" size={18} /> : <Wand2 size={18} />}
+                                <span>Update Plan</span>
+                            </button>
                         </div>
                     </div>
                 </div>

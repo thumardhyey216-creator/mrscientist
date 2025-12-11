@@ -572,6 +572,13 @@ class SupabaseAPI extends BaseAPI {
         return response.data;
     }
 
+    async reschedule(params) {
+        // params: { user_id, database_id, prompt }
+        const response = await api.post('/api/reschedule', params);
+        this.cache.timestamp = null; // Invalidate cache
+        return response.data;
+    }
+
     async clearSchedule(userId, databaseId) {
         const response = await api.post('/api/clear-schedule', { user_id: userId, database_id: databaseId });
         this.cache.timestamp = null; // Invalidate cache
@@ -606,6 +613,7 @@ export const addCustomColumn = (data) => backendAPI.addCustomColumn(data);
 export const getDatabaseViews = () => backendAPI.getDatabaseViews();
 export const saveDatabaseView = (data) => backendAPI.saveDatabaseView(data);
 export const generateSchedule = (params) => backendAPI.generateSchedule(params);
+export const reschedule = (params) => backendAPI.reschedule(params);
 export const clearSchedule = (userId, databaseId) => backendAPI.clearSchedule(userId, databaseId);
 
 export const askAI = async (prompt, userId, databaseId) => {

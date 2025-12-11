@@ -17,17 +17,17 @@ const Subscription = () => {
         try {
             // 1. Create Order
             const { data: order } = await axios.post('http://localhost:8000/api/payment/create-order', {
-                amount: 50000, // 500 Rs
+                amount: 25000, // 250 Rs (50% Discount)
                 currency: 'INR'
             });
 
             // 2. Open Razorpay
             const options = {
-                key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder', // Add this to .env
+                key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_placeholder', 
                 amount: order.amount,
                 currency: order.currency,
                 name: "MedTutor AI",
-                description: "Monthly Subscription",
+                description: "Monthly Subscription (50% OFF)",
                 order_id: order.id,
                 handler: async function (response) {
                     try {
@@ -36,7 +36,8 @@ const Subscription = () => {
                             razorpay_order_id: response.razorpay_order_id,
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_signature: response.razorpay_signature,
-                            user_id: user.id
+                            user_id: user.id,
+                            amount: 25000 // Send amount to backend for plan confirmation
                         });
 
                         if (verifyRes.data.success) {
@@ -73,6 +74,24 @@ const Subscription = () => {
         }
     };
 
+    const handleTrial = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            await axios.post('http://localhost:8000/api/payment/start-trial', {
+                user_id: user.id
+            });
+            alert('7-Day Free Trial Activated! 🚀');
+            navigate('/dashboard');
+        } catch (err) {
+            console.error("Trial Error", err);
+            const msg = err.response?.data?.error || err.message || 'Failed to start trial.';
+            setError(msg);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] p-4">
             <div className="w-full max-w-lg glass-card p-8 border border-[var(--border-primary)] relative overflow-hidden">
@@ -89,9 +108,16 @@ const Subscription = () => {
                 </div>
 
                 <div className="bg-[var(--bg-secondary)] rounded-xl p-6 mb-8 border border-[var(--border-primary)] relative z-10">
-                    <div className="flex items-baseline justify-center mb-6">
-                        <span className="text-4xl font-bold text-[var(--text-primary)]">₹500</span>
-                        <span className="text-[var(--text-secondary)] ml-2">/ month</span>
+                    <div className="flex flex-col items-center justify-center mb-6">
+                        <div className="flex items-center gap-2 mb-2">
+                             <span className="text-lg text-[var(--text-secondary)] line-through">₹500</span>
+                             <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-sm font-medium">50% OFF</span>
+                        </div>
+                        <div className="flex items-baseline">
+                            <span className="text-4xl font-bold text-[var(--text-primary)]">₹250</span>
+                            <span className="text-[var(--text-secondary)] ml-2">/ month</span>
+                        </div>
+                        <p className="text-xs text-[var(--text-tertiary)] mt-1">Limited Time Offer for Students</p>
                     </div>
 
                     <ul className="space-y-4 mb-6">
@@ -116,13 +142,23 @@ const Subscription = () => {
                     </div>
                 )}
 
-                <button
-                    onClick={handlePayment}
-                    disabled={loading}
-                    className="w-full btn btn-primary py-3 text-lg font-semibold shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 relative z-10 hover:scale-[1.02] transition-transform"
-                >
-                    {loading ? <Loader2 className="animate-spin" /> : 'Subscribe Now'}
-                </button>
+                <div className="space-y-3 relative z-10">
+                    <button
+                        onClick={handlePayment}
+                        disabled={loading}
+                        className="w-full btn btn-primary py-3 text-lg font-semibold shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform"
+                    >
+                        {loading ? <Loader2 className="animate-spin" /> : 'Subscribe Now @ ₹250'}
+                    </button>
+
+                    <button
+                        onClick={handleTrial}
+                        disabled={loading}
+                        className="w-full btn bg-transparent border border-[var(--border-primary)] text-[var(--text-primary)] py-3 text-lg font-semibold flex items-center justify-center gap-2 hover:bg-[var(--bg-secondary)] transition-colors"
+                    >
+                        Start 7-Day Free Trial
+                    </button>
+                </div>
 
                 <div className="mt-6 flex items-center justify-center gap-2 text-xs text-[var(--text-tertiary)] relative z-10">
                     <ShieldCheck size={14} />
