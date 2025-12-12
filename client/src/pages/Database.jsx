@@ -69,7 +69,7 @@ const Database = () => {
     });
 
     const subjects = React.useMemo(() => {
-        const topicSubjects = topics.map(t => t.subjectCategory).filter(Boolean);
+        const topicSubjects = (topics || []).map(t => t.subjectCategory).filter(Boolean);
         return [...new Set([...DEFAULT_SUBJECTS, ...topicSubjects])].sort();
     }, [topics]);
 

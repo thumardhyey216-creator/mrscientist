@@ -21,7 +21,7 @@ import {
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { profile, signOut } = useAuth();
-    const { databases, currentDatabase, switchDatabase, createDatabase, deleteDatabase } = useDatabase();
+    const { databases = [], currentDatabase, switchDatabase, createDatabase, deleteDatabase } = useDatabase();
     const isSubscribed = profile?.subscription_status === 'active';
     const [isDbMenuOpen, setIsDbMenuOpen] = useState(false);
     const [isCreatingDb, setIsCreatingDb] = useState(false);
@@ -109,7 +109,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (window.confirm(`Are you sure you want to delete "${db.name}"? This cannot be undone.`)) {
+                                                    if (deleteDatabase && window.confirm(`Are you sure you want to delete "${db.name}"? This cannot be undone.`)) {
                                                         deleteDatabase(db.id);
                                                     }
                                                 }}
