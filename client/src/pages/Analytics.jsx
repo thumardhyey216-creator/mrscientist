@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { CheckCircle2, Clock, AlertTriangle, BookOpen, TrendingUp, Calendar as CalendarIcon, Zap, Brain, Target } from 'lucide-react';
 import { Utils } from '../utils';
-import { startOfYear, endOfYear, eachDayOfInterval, format, isSameDay, parseISO, isPast, isFuture, addDays, subDays, differenceInDays, compareAsc, startOfDay } from 'date-fns';
+import { startOfYear, endOfYear, eachDayOfInterval, format, isSameDay, parseISO, isPast, addDays, subDays, differenceInDays } from 'date-fns';
 
 // const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); // Removed
 
@@ -701,7 +701,7 @@ const Analytics = () => {
                                 🎉 All completed topics have been revised!
                             </div>
                         ) : (
-                            forgottenTopics.map((topic, i) => (
+                            forgottenTopics.map((topic) => (
                                 <div key={topic.id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-subtle)] hover:border-[var(--primary)] transition-colors">
                                     <div className="min-w-0">
                                         <div className="font-medium truncate">{topic.topicName}</div>

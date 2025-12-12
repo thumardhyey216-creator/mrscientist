@@ -9,7 +9,6 @@ import Database from './pages/Database';
 import Analytics from './pages/Analytics';
 import TopicPage from './pages/TopicPage';
 import StudyPlanner from './pages/StudyPlanner';
-import AIAssistant from './pages/AIAssistant';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Subscription from './pages/Subscription';
@@ -48,11 +47,6 @@ const App = () => {
             <Route path="analytics" element={
               <ProtectedRoute requireSubscription={true}>
                 <Analytics />
-              </ProtectedRoute>
-            } />
-            <Route path="ai-assistant" element={
-              <ProtectedRoute requireSubscription={true}>
-                <AIAssistant />
               </ProtectedRoute>
             } />
             <Route path="topic/:id" element={

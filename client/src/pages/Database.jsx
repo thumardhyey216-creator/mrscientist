@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDatabase } from '../context/DatabaseContext';
 // import { createClient } from '@supabase/supabase-js'; // Removed
 import { CONFIG } from '../config';
-import { Filter, ChevronDown, Calendar as CalendarIcon, Plus, X, Table2, Table, LayoutGrid, Search } from 'lucide-react';
+import { Filter, ChevronDown, Calendar as CalendarIcon, Plus, X, Table2, Table, LayoutGrid, Search, Trash2, Edit2 } from 'lucide-react';
 import { Utils } from '../utils';
 import CalendarView from '../components/database/CalendarView';
 import BoardView from '../components/database/BoardView';
@@ -15,6 +15,7 @@ import {
     getTopics,
     updateTopic as apiUpdateTopic,
     createTopic as apiCreateTopic,
+    deleteTopic as apiDeleteTopic,
     getCustomColumns,
     addCustomColumn
 } from '../services/api';
@@ -50,6 +51,7 @@ const Database = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [advancedFilters, setAdvancedFilters] = useState([]);
     const [newColumn, setNewColumn] = useState({ name: '', type: 'text' });
+    const [isEditingId, setIsEditingId] = useState(null);
     const [newRow, setNewRow] = useState({
         topic_name: '',
         subject_category: '',
@@ -59,13 +61,7 @@ const Database = () => {
         planned_date: ''
     });
 
-    useEffect(() => {
-        if (user && currentDatabase) {
-            loadData();
-        }
-    }, [user, currentDatabase]);
-
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
             // Load topics via API
@@ -100,7 +96,13 @@ const Database = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user, currentDatabase]);
+
+    useEffect(() => {
+        if (user && currentDatabase) {
+            loadData();
+        }
+    }, [user, currentDatabase, loadData]);
 
     // Update topic via API
     const updateTopic = async (id, field, value) => {
@@ -146,9 +148,26 @@ const Database = () => {
         }
     };
 
-    // Add new row
-    const addNewRow = async () => {
+    // Add or Update row
+    const handleSaveRow = async () => {
         try {
+            if (isEditingId) {
+                // Update existing
+                await updateTopic(isEditingId, 'topicName', newRow.topic_name);
+                await updateTopic(isEditingId, 'subjectCategory', newRow.subject_category);
+                await updateTopic(isEditingId, 'priority', newRow.priority);
+                await updateTopic(isEditingId, 'source', newRow.source);
+                await updateTopic(isEditingId, 'duration', newRow.duration);
+                await updateTopic(isEditingId, 'plannedDate', newRow.planned_date);
+                
+                // Reset
+                setIsEditingId(null);
+                setShowAddRowModal(false);
+                setNewRow({ topic_name: '', subject_category: '', priority: '', source: '', duration: '', planned_date: '' });
+                return;
+            }
+
+            // Create New
             const newTopicData = await apiCreateTopic({
                 topic_name: newRow.topic_name,
                 subject_category: newRow.subject_category,
@@ -177,9 +196,33 @@ const Database = () => {
             setShowAddRowModal(false);
             setNewRow({ topic_name: '', subject_category: '', priority: '', source: '', duration: '', planned_date: '' });
         } catch (err) {
-            console.error('Error adding row:', err);
-            alert('Failed to add row');
+            console.error('Error saving row:', err);
+            alert('Failed to save row');
         }
+    };
+
+    const handleDeleteTopic = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this topic?')) return;
+        try {
+            await apiDeleteTopic(id);
+            setTopics(prev => prev.filter(t => t.id !== id));
+        } catch (err) {
+            console.error('Error deleting topic:', err);
+            alert('Failed to delete topic');
+        }
+    };
+
+    const handleEditClick = (topic) => {
+        setIsEditingId(topic.id);
+        setNewRow({
+            topic_name: topic.topicName || '',
+            subject_category: topic.subjectCategory || '',
+            priority: topic.priority || '',
+            source: topic.source || '',
+            duration: topic.duration || '',
+            planned_date: topic.plannedDate ? topic.plannedDate.split('T')[0] : ''
+        });
+        setShowAddRowModal(true);
     };
 
     // Add new column
@@ -615,6 +658,7 @@ const Database = () => {
                                     <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">2nd Rev Status</th>
                                     <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-40">2nd Rev Date</th>
                                     <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-32">Completed</th>
+                                    <th className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase w-20">Actions</th>
                                     {/* Custom Columns */}
                                     {customColumns.map(col => (
                                         <th key={col.id} className="text-left p-3 font-semibold text-[var(--text-secondary)] text-xs uppercase min-w-[150px]">
@@ -655,19 +699,24 @@ const Database = () => {
                                         </div>
                                     </td>
                                     <td className="p-3">
-                                        <select
-                                            value={topic.subjectCategory || ''}
-                                            onChange={(e) => updateTopic(topic.id, 'subjectCategory', e.target.value)}
-                                            className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs font-medium focus:outline-none focus:border-[var(--primary)]"
-                                            style={{
-                                                color: topic.subjectCategory ? Utils.getSubjectColor(topic.subjectCategory) : 'inherit'
-                                            }}
-                                        >
-                                            <option value="">Select Subject</option>
-                                            {subjects.map(subject => (
-                                                <option key={subject} value={subject}>{subject}</option>
-                                            ))}
-                                        </select>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                list={`subject-list-${topic.id}`}
+                                                value={topic.subjectCategory || ''}
+                                                onChange={(e) => updateTopic(topic.id, 'subjectCategory', e.target.value)}
+                                                className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs font-medium focus:outline-none focus:border-[var(--primary)]"
+                                                style={{
+                                                    color: topic.subjectCategory ? Utils.getSubjectColor(topic.subjectCategory) : 'inherit'
+                                                }}
+                                                placeholder="Select or type..."
+                                            />
+                                            <datalist id={`subject-list-${topic.id}`}>
+                                                {subjects.map(subject => (
+                                                    <option key={subject} value={subject} />
+                                                ))}
+                                            </datalist>
+                                        </div>
                                     </td>
                                     <td className="p-3">
                                         <select
@@ -776,6 +825,24 @@ const Database = () => {
                                                 {topic.completed === 'True' ? 'Done' : 'Pending'}
                                             </span>
                                         </label>
+                                    </td>
+                                    <td className="p-3">
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleEditClick(topic)}
+                                                className="p-1.5 text-[var(--text-tertiary)] hover:text-[var(--primary)] hover:bg-[var(--bg-card-hover)] rounded transition-colors"
+                                                title="Edit"
+                                            >
+                                                <Edit2 size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteTopic(topic.id)}
+                                                className="p-1.5 text-[var(--text-tertiary)] hover:text-[var(--error)] hover:bg-[var(--bg-card-hover)] rounded transition-colors"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </td>
                                     {/* Custom Column Cells */}
                                     {customColumns.map(col => (
@@ -900,14 +967,18 @@ const Database = () => {
                 </div>
             )}
 
-            {/* Add Row Modal */}
+            {/* Add/Edit Row Modal */}
             {showAddRowModal && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
                     <div className="glass-card p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto animate-fade-in">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-xl font-bold">Add New Topic</h3>
+                            <h3 className="text-xl font-bold">{isEditingId ? 'Edit Topic' : 'Add New Topic'}</h3>
                             <button
-                                onClick={() => setShowAddRowModal(false)}
+                                onClick={() => {
+                                    setShowAddRowModal(false);
+                                    setIsEditingId(null);
+                                    setNewRow({ topic_name: '', subject_category: '', priority: '', source: '', duration: '', planned_date: '' });
+                                }}
                                 className="p-1 hover:bg-[var(--bg-secondary)] rounded"
                             >
                                 <X size={20} />
@@ -997,17 +1068,21 @@ const Database = () => {
 
                             <div className="flex gap-2 mt-6">
                                 <button
-                                    onClick={() => setShowAddRowModal(false)}
+                                    onClick={() => {
+                                        setShowAddRowModal(false);
+                                        setIsEditingId(null);
+                                        setNewRow({ topic_name: '', subject_category: '', priority: '', source: '', duration: '', planned_date: '' });
+                                    }}
                                     className="flex-1 btn btn-secondary"
                                 >
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={addNewRow}
+                                    onClick={handleSaveRow}
                                     disabled={!newRow.topic_name}
                                     className="flex-1 btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    Add Topic
+                                    {isEditingId ? 'Save Changes' : 'Add Topic'}
                                 </button>
                             </div>
                         </div>

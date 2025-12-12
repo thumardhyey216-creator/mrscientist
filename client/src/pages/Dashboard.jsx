@@ -17,19 +17,19 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
     const [selectedTopic, setSelectedTopic] = useState(null);
 
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const data = await getTopics(true, user?.id, currentDatabase?.id);
-            setTopics(data);
-        } catch (error) {
-            console.error("Failed to load topics:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     useEffect(() => {
+        const loadData = async () => {
+            setLoading(true);
+            try {
+                const data = await getTopics(true, user?.id, currentDatabase?.id);
+                setTopics(data);
+            } catch (error) {
+                console.error("Failed to load topics:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
         if (user) {
             loadData();
         }

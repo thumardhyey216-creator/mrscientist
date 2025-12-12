@@ -13,7 +13,6 @@ import {
     BookOpen,
     Lock,
     LogOut,
-    Sparkles,
     Plus,
     ChevronDown,
     ChevronUp
@@ -54,7 +53,6 @@ const Sidebar = ({ isOpen, onClose }) => {
         { path: '/planner', label: 'Study Planner', icon: Calendar },
         { path: '/database', label: 'Database', icon: Database },
         { path: '/analytics', label: 'Analytics', icon: BarChart2 },
-        { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
     ];
 
     return (

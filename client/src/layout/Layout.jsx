@@ -5,7 +5,8 @@ import Topbar from '../components/Topbar';
 
 const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [lastUpdated, setLastUpdated] = useState(Date.now());
+    // Initialize with function to avoid impure call on every render
+    const [lastUpdated, setLastUpdated] = useState(() => Date.now());
     const location = useLocation();
 
     // Determine page title based on path
@@ -41,7 +42,7 @@ const Layout = () => {
                 />
 
                 <main className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
-                    <Outlet context={{ lastUpdated }} />
+                    <Outlet context={{ lastUpdated, setLastUpdated }} />
                 </main>
             </div>
         </div>

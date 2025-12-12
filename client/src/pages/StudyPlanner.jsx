@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDatabase } from '../context/DatabaseContext';
@@ -43,9 +43,24 @@ const StudyPlanner = () => {
     const [rescheduling, setRescheduling] = useState(false);
     const [draftingPrompt, setDraftingPrompt] = useState(false);
 
+    const loadData = useCallback(async (forceRefresh = false) => {
+        setLoading(true);
+        try {
+            console.log("Fetching topics for user:", user?.id, "Force refresh:", forceRefresh);
+            // If forceRefresh is true, useCache should be false
+            const data = await getTopics(!forceRefresh, user?.id, currentDatabase?.id);
+            console.log("Loaded topics data:", data);
+            setTopics(data);
+        } catch (error) {
+            console.error("Failed to load topics:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [user, currentDatabase]);
+
     useEffect(() => {
         if (user && currentDatabase) loadData(false);
-    }, [user, lastUpdated, currentDatabase]);
+    }, [user, lastUpdated, currentDatabase, loadData]);
 
     const handleReschedule = async () => {
         if (!reschedulePrompt.trim()) return;
@@ -65,21 +80,6 @@ const StudyPlanner = () => {
             alert("Failed to reschedule: " + error.message);
         } finally {
             setRescheduling(false);
-        }
-    };
-
-    const loadData = async (forceRefresh = false) => {
-        setLoading(true);
-        try {
-            console.log("Fetching topics for user:", user?.id, "Force refresh:", forceRefresh);
-            // If forceRefresh is true, useCache should be false
-            const data = await getTopics(!forceRefresh, user?.id, currentDatabase?.id);
-            console.log("Loaded topics data:", data);
-            setTopics(data);
-        } catch (error) {
-            console.error("Failed to load topics:", error);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -245,6 +245,14 @@ const StudyPlanner = () => {
     const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
     const resetToday = () => setCurrentDate(new Date());
 
+    if (loading && topics.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-[calc(100vh-100px)]">
+                <Loader2 className="animate-spin text-[var(--primary)]" size={48} />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -328,7 +336,7 @@ const StudyPlanner = () => {
 
                         {/* Days Grid */}
                         <div className="grid grid-cols-7 gap-2">
-                            {calendarDays.map((day, idx) => {
+                            {calendarDays.map((day) => {
                                 const isCurrentMonth = isSameMonth(day, monthStart);
                                 const isToday = isSameDay(day, new Date());
                                 const events = getEventsForDay(day);

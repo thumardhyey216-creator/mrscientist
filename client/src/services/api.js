@@ -25,7 +25,7 @@ class BaseAPI {
         return (Date.now() - this.cache.timestamp) < CONFIG.CACHE_DURATION;
     }
 
-    async initializeUser(userId) {
+    async initializeUser(_userId) {
         throw new Error('initializeUser not supported for this API');
     }
 
@@ -85,9 +85,10 @@ class BaseAPI {
                 case 'numbered_list_item':
                     return `<li ${blockIdAttr} class="notion-block list-item-block" style="margin-left: 1.5rem; margin-bottom: 0.25rem; list-style: decimal;">${getText(content.rich_text)}</li>`;
 
-                case 'to_do':
+                case 'to_do': {
                     const checked = content.checked ? 'checked' : '';
                     return `<div ${blockIdAttr} class="notion-block todo-block" style="margin-bottom: 0.5rem;"><input type="checkbox" ${checked} disabled style="margin-right: 0.5rem;">${getText(content.rich_text)}</div>`;
+                }
 
                 case 'toggle':
                     return `<details ${blockIdAttr} class="notion-block toggle-block" style="margin-bottom: 0.75rem; padding: 0.5rem; background: var(--bg-card); border-radius: var(--radius-md);"><summary style="cursor: pointer; font-weight: 500;">${getText(content.rich_text)}</summary></details>`;
@@ -101,9 +102,10 @@ class BaseAPI {
                 case 'divider':
                     return `<hr ${blockIdAttr} class="notion-block divider-block" style="border: none; border-top: 1px solid var(--border-primary); margin: 1.5rem 0;">`;
 
-                case 'callout':
+                case 'callout': {
                     const icon = content.icon?.emoji || '💡';
                     return `<div ${blockIdAttr} class="notion-block callout-block" style="background: var(--bg-card); border-left: 3px solid var(--primary); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1rem; display: flex; gap: 0.75rem;"><span style="font-size: 1.25rem;">${icon}</span><div class="callout-content">${getText(content.rich_text)}</div></div>`;
+                }
 
                 default:
                     if (type === 'child_page') {
@@ -176,11 +178,6 @@ class NotionAPI extends BaseAPI {
     transformTopics(rawData) {
         return rawData.map(page => {
             const props = page.properties;
-            const extract = (p, path) => {
-                if (!p) return null;
-                if (!path) return p;
-                return path.split('.').reduce((o, i) => o ? o[i] : null, p);
-            };
 
             const getTitle = (p) => p?.title?.[0]?.plain_text || '';
             const getSelect = (p) => p?.select?.name || null;
@@ -491,31 +488,6 @@ class SupabaseAPI extends BaseAPI {
             subjectCategory: row.subject_category,
             // Add other fields if needed for list view
         }));
-    }
-
-    async getTopic(id) {
-        const response = await api.get(`${this.baseUrl}/topics/${id}`);
-        // Transform single topic
-        const row = response.data;
-        return {
-            id: row.id,
-            parentId: row.parent_id,
-            notionId: row.notion_id,
-            topicName: row.topic_name,
-            subjectCategory: row.subject_category,
-            priority: row.priority,
-            source: row.source,
-            duration: row.duration,
-            plannedDate: row.planned_date,
-            mcqSolvingDate: row.mcq_solving_date,
-            firstRevisionDate: row.first_revision_date,
-            completed: row.completed,
-            firstRevision: row.first_revision,
-            secondRevision: row.second_revision,
-            notes: row.notes,
-            pyqAsked: row.pyq_asked,
-            customData: row.custom_data
-        };
     }
 
     async getRevisionInsights(topics) {
