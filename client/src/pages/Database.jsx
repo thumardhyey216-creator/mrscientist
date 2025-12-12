@@ -837,6 +837,8 @@ const Database = () => {
                     </div>
                 </div>
             </div>
+            {renderMobileCardView()}
+            </>
         )}
 
             {/* Add Column Modal */}
@@ -895,8 +897,6 @@ const Database = () => {
                             </div>
                         </div>
                     </div>
-                    {renderMobileCardView()}
-                </>
             )}
 
             {/* Add Row Modal */}
