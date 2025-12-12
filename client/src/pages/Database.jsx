@@ -32,6 +32,13 @@ const DEFAULT_VIEWS = [
     { id: 'completed', name: 'Completed', viewMode: 'table', filters: { completed: 'True' } }
 ];
 
+const DEFAULT_SUBJECTS = [
+    'Anatomy', 'Physiology', 'Biochemistry', 'Pathology', 'Pharmacology', 
+    'Microbiology', 'Forensic Medicine', 'PSM', 'ENT', 'Ophthalmology', 
+    'Medicine', 'Surgery', 'OBGYN', 'Pediatrics', 'Orthopedics', 
+    'Dermatology', 'Psychiatry', 'Radiology', 'Anesthesia'
+];
+
 const Database = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -69,7 +76,10 @@ const Database = () => {
             setTopics(topicsData || []);
 
             // Extract unique subjects (API returns camelCase)
-            const uniqueSubjects = [...new Set(topicsData?.map(t => t.subjectCategory).filter(Boolean))];
+            const uniqueSubjects = [...new Set([
+                ...DEFAULT_SUBJECTS,
+                ...topicsData?.map(t => t.subjectCategory).filter(Boolean)
+            ])];
             setSubjects(uniqueSubjects.sort());
 
             // Detect date columns from first topic
