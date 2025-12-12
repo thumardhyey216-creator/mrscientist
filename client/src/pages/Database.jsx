@@ -897,6 +897,7 @@ const Database = () => {
                             </div>
                         </div>
                     </div>
+                </div>
             )}
 
             {/* Add Row Modal */}
