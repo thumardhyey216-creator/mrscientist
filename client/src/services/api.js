@@ -29,6 +29,11 @@ class BaseAPI {
         throw new Error('initializeUser not supported for this API');
     }
 
+    async generatePrompt(stats, type) {
+        const response = await api.post('/api/generate-prompt', { stats, type });
+        return response.data;
+    }
+
     /**
      * Convert blocks to HTML
      * Reused from legacy code for compatibility
@@ -583,11 +588,6 @@ class SupabaseAPI extends BaseAPI {
     async clearSchedule(userId, databaseId) {
         const response = await api.post('/api/clear-schedule', { user_id: userId, database_id: databaseId });
         this.cache.timestamp = null; // Invalidate cache
-        return response.data;
-    }
-
-    async generatePrompt(stats, type) {
-        const response = await api.post('/api/generate-prompt', { stats, type });
         return response.data;
     }
 
