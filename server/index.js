@@ -849,13 +849,19 @@ app.post('/api/generate-schedule', async (req, res) => {
         }
 
         // 2. Sort Topics
-        const priorityOrder = { 'High': 1, 'Medium': 2, 'Low': 3, null: 4 };
+        // Map matches the values in Database.jsx options
+        const priorityOrder = { 
+            'High RR': 1, 'High': 1, 
+            'Moderate RR': 2, 'Medium': 2, 'Moderate': 2,
+            'Low RR': 3, 'Low': 3, 
+            null: 4 
+        };
         
         if (strategy === 'custom' && prompt) {
             console.log("🤖 AI Custom Strategy Requested...");
             try {
                 // Prepare a simplified list for the AI to save tokens
-                // Only send ID, Topic Name, Subject, Priority
+                // Only send ID, Topic Name, Subject, Priority, Tags
                 const simplifiedTopics = topics.map(t => ({
                     id: t.id,
                     name: t.topic_name,
@@ -874,11 +880,20 @@ app.post('/api/generate-schedule', async (req, res) => {
                     Task: Reorder these topics to best match the user's strategy.
                     
                     CRITICAL INSTRUCTIONS:
-                    1. **Priority Sorting**: If the user mentions "High Yield", "Priority", or "RR", you MUST place "High" priority topics first, then "Moderate"/"Medium", then "Low".
-                    2. **Subject Clustering**: If the user mentions "grouping subjects", "topics together", "associated topics", or similar, you MUST keep topics with the same 'subject' value together *within* their priority group.
-                       - CORRECT: [High-SubjectA, High-SubjectA, High-SubjectB, High-SubjectB, Med-SubjectA...]
-                       - WRONG: [High-SubjectA, High-SubjectB, High-SubjectA...] (Don't mix subjects within the same priority tier)
-                    3. **Interpretation**: "High Yield" = "High Priority" or "High RR".
+                    1. **Priority Sorting**: 
+                       - FIRST: All "High RR" (or High Priority) topics.
+                       - SECOND: All "Moderate RR" (or Medium Priority) topics.
+                       - THIRD: All "Low RR" (or Low Priority) topics.
+                    
+                    2. **Subject Clustering (Clustering)**: 
+                       - WITHIN each priority group, you MUST group topics by 'subject'.
+                       - Do not mix subjects randomly. Keep same subjects together.
+                       - Example order: 
+                         [High RR - Patho, High RR - Patho], [High RR - Pharma, High RR - Pharma], ... then [Moderate RR - Patho...]
+                    
+                    3. **Strict Adherence**: 
+                       - Do not deviate from the Priority -> Subject hierarchy unless the user explicitly asks to ignore priority.
+                       - If the user asks for "High RR then Moderate then Low", this is the absolute rule.
                     
                     Output Format:
                     - Return ONLY a valid JSON array of strings (the topic IDs).
