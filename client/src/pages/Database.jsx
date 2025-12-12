@@ -78,7 +78,7 @@ const Database = () => {
             // Extract unique subjects (API returns camelCase)
             const uniqueSubjects = [...new Set([
                 ...DEFAULT_SUBJECTS,
-                ...topicsData?.map(t => t.subjectCategory).filter(Boolean)
+                ...(topicsData?.map(t => t.subjectCategory).filter(Boolean) || [])
             ])];
             setSubjects(uniqueSubjects.sort());
 
