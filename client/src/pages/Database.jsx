@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useDatabase } from '../context/DatabaseContext';
+import { useAuth } from '../context/useAuth';
+import { useDatabase } from '../context/useDatabase';
 // import { createClient } from '@supabase/supabase-js'; // Removed
 import { CONFIG } from '../config';
 import { Filter, ChevronDown, Calendar as CalendarIcon, Plus, X, Table2, Table, LayoutGrid, Search, Trash2, Edit2 } from 'lucide-react';

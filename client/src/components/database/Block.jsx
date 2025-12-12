@@ -170,7 +170,7 @@ const Block = ({ block, onUpdate }) => {
                 </div>
             );
 
-        case 'callout':
+        case 'callout': {
             const icon = content.icon?.emoji || '💡';
             return (
                 <div {...commonProps} {...blockProps}>
@@ -182,6 +182,7 @@ const Block = ({ block, onUpdate }) => {
                     <EditButton />
                 </div>
             );
+        }
 
         case 'code':
             return (
@@ -200,7 +201,7 @@ const Block = ({ block, onUpdate }) => {
                 </div>
             );
 
-        case 'to_do':
+        case 'to_do': {
             // Checkbox logic needed
             const checked = content.checked;
             return (
@@ -210,6 +211,7 @@ const Block = ({ block, onUpdate }) => {
                         dangerouslySetInnerHTML={{ __html: getHtml(content.rich_text) }} />
                 </div>
             );
+        }
 
         case 'toggle':
             return (

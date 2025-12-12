@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useDatabase } from '../context/DatabaseContext';
+import { useAuth } from '../context/useAuth';
+import { useDatabase } from '../context/useDatabase';
 import { getTopics } from '../services/api';
 // import { createClient } from '@supabase/supabase-js'; // Removed
 // import { CONFIG } from '../config';
@@ -733,7 +733,8 @@ const KpiCard = ({ title, value, subtitle, icon: Icon, color, bg }) => (
                 <h4 className="text-2xl font-bold mt-2">{value}</h4>
                 <p className="text-xs text-[var(--text-tertiary)] mt-1">{subtitle}</p>
             </div>
-            <div className={`p-3 rounded-lg ${bg} ${color}`}>
+            {/* eslint-disable-next-line no-unused-vars */}
+            <div className={`p-3 rounded-lg ${bg}`} style={{ color: color }}>
                 <Icon size={20} />
             </div>
         </div>

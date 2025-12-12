@@ -25,8 +25,8 @@ class BaseAPI {
         return (Date.now() - this.cache.timestamp) < CONFIG.CACHE_DURATION;
     }
 
-    async initializeUser(_userId) {
-        throw new Error('initializeUser not supported for this API');
+    async initializeUser(userId) {
+        throw new Error(`initializeUser not supported for this API: ${userId}`);
     }
 
     async generatePrompt(stats, type) {
@@ -572,7 +572,17 @@ const backendAPI = (CONFIG.DATA_SOURCE === 'supabase' || CONFIG.DATA_SOURCE === 
 
 // Export accessors
 export const getTopics = (useCache, userId, databaseId) => backendAPI.queryDatabase(useCache, userId, databaseId);
-export const initializeUser = (userId, databaseId) => backendAPI.initializeUser(userId, databaseId);
+export const initializeUser = async (userId, databaseId = null) => {
+    try {
+        if (!databaseId) {
+            // ...
+        }
+        // ...
+    } catch (error) {
+        console.error('Initialize user error:', error);
+        throw error;
+    }
+};
 export const markComplete = (id) => backendAPI.markComplete(id);
 export const getPageBlocks = (pageId) => backendAPI.getPageBlocks(pageId);
 export const updateBlock = (blockId, blockType, content) => backendAPI.updateBlock(blockId, blockType, content);

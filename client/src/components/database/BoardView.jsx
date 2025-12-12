@@ -20,13 +20,14 @@ const BoardView = ({ topics, onTopicClick, groupByField = 'completed', onUpdateT
                     { id: 'Low RR', title: 'Low Priority', color: '#3b82f6' },
                     { id: null, title: 'No Priority', color: '#6b7280' }
                 ];
-            case 'subject_category':
+            case 'subject_category': {
                 const subjects = [...new Set(topics.map(t => t.subject_category).filter(Boolean))];
                 return subjects.map(s => ({
                     id: s,
                     title: s,
                     color: Utils.getSubjectColor(s)
                 }));
+            }
             default:
                 return [
                     { id: 'False', title: 'Pending', color: '#f59e0b' },

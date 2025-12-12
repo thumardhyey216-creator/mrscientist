@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useDatabase } from '../context/DatabaseContext';
+import { useAuth } from '../context/useAuth';
+import { useDatabase } from '../context/useDatabase';
 import {
     LayoutDashboard,
     BarChart2,

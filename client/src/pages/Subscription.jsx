@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { createPaymentOrder, verifyPayment, startTrial } from '../services/api';
 import { Check, CreditCard, Loader2, ShieldCheck } from 'lucide-react';
 

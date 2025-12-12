@@ -1,11 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from './AuthContext';
+import { useAuth } from './useAuth';
 import { initializeUser } from '../services/api';
-
-const DatabaseContext = createContext({});
-
-export const useDatabase = () => useContext(DatabaseContext);
+import { DatabaseContext } from './contexts';
 
 export const DatabaseProvider = ({ children }) => {
     const { user } = useAuth();
@@ -13,16 +10,8 @@ export const DatabaseProvider = ({ children }) => {
     const [currentDatabase, setCurrentDatabase] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        if (user) {
-            fetchDatabases();
-        } else {
-            setDatabases([]);
-            setCurrentDatabase(null);
-        }
-    }, [user]);
-
-    const fetchDatabases = async () => {
+    const fetchDatabases = useCallback(async () => {
+        if (!user) return;
         setLoading(true);
         try {
             const { data, error } = await supabase
@@ -76,7 +65,16 @@ export const DatabaseProvider = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
+
+    useEffect(() => {
+        if (user) {
+            fetchDatabases();
+        } else {
+            setDatabases([]);
+            setCurrentDatabase(null);
+        }
+    }, [user, fetchDatabases]);
 
     const createDatabase = async (name, description = '', icon = '📚', initialize = false) => {
         try {

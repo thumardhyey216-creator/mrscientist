@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useDatabase } from '../context/DatabaseContext';
+import { useAuth } from '../context/useAuth';
+import { useDatabase } from '../context/useDatabase';
 import { getTopic, updateTopic, createTopic, getTopicChildren } from '../services/api'; // Updated imports
 // import { createClient } from '@supabase/supabase-js'; 
 import { CONFIG } from '../config';

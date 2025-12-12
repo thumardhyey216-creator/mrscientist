@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { useDatabase } from '../context/DatabaseContext';
+import { useAuth } from '../context/useAuth';
+import { useDatabase } from '../context/useDatabase';
 import { getTopics, generateSchedule, clearSchedule, reschedule, generatePrompt } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { 

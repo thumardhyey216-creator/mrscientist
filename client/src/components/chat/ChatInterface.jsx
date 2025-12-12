@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { useDatabase } from '../../context/DatabaseContext';
+import { useAuth } from '../../context/useAuth';
+import { useDatabase } from '../../context/useDatabase';
 import { askAI } from '../../services/api';
 import { Send, Bot, User } from 'lucide-react';
 
