@@ -46,7 +46,7 @@ const Database = () => {
     const [topics, setTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterSubject, setFilterSubject] = useState('All');
-    const [subjects, setSubjects] = useState([]);
+    // const [subjects, setSubjects] = useState([]); // Removed state
     const [showAddColumnModal, setShowAddColumnModal] = useState(false);
     const [showAddRowModal, setShowAddRowModal] = useState(false);
     const [showFilterPanel, setShowFilterPanel] = useState(false);
@@ -68,19 +68,22 @@ const Database = () => {
         planned_date: ''
     });
 
+    const subjects = React.useMemo(() => {
+        const topicSubjects = topics.map(t => t.subjectCategory).filter(Boolean);
+        return [...new Set([...DEFAULT_SUBJECTS, ...topicSubjects])].sort();
+    }, [topics]);
+
     const loadData = useCallback(async () => {
+        if (!currentDatabase) {
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             // Load topics via API
             const topicsData = await getTopics(false, user?.id, currentDatabase?.id);
             setTopics(topicsData || []);
-
-            // Extract unique subjects (API returns camelCase)
-            const uniqueSubjects = [...new Set([
-                ...DEFAULT_SUBJECTS,
-                ...(topicsData?.map(t => t.subjectCategory).filter(Boolean) || [])
-            ])];
-            setSubjects(uniqueSubjects.sort());
 
             // Detect date columns from first topic
             if (topicsData && topicsData.length > 0) {
@@ -109,7 +112,7 @@ const Database = () => {
     }, [user, currentDatabase]);
 
     useEffect(() => {
-        if (user && currentDatabase) {
+        if (user) {
             loadData();
         }
     }, [user, currentDatabase, loadData]);
@@ -505,6 +508,18 @@ const Database = () => {
         return (
             <div className="flex items-center justify-center h-[calc(100vh-200px)]">
                 <div className="spinner"></div>
+            </div>
+        );
+    }
+
+    if (!currentDatabase) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center animate-fade-in">
+                <div className="text-6xl mb-6">📚</div>
+                <h3 className="text-2xl font-bold mb-3">No Database Selected</h3>
+                <p className="text-[var(--text-secondary)] mb-8 max-w-md">
+                    Please select a database from the sidebar or create a new one to start tracking your topics.
+                </p>
             </div>
         );
     }
