@@ -1065,6 +1065,7 @@ app.post('/api/generate-schedule', async (req, res) => {
 // --- AI Rescheduling Endpoint ---
 app.post('/api/reschedule', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
+    if (!model) return res.status(503).json({ error: 'AI Service not available' });
 
     try {
         const { user_id, database_id, prompt } = req.body;
@@ -1154,26 +1155,36 @@ app.post('/api/reschedule', async (req, res) => {
         
         // Helper to recalculate revision dates
         const calculateRevisions = (plannedDateStr) => {
-             const planned = new Date(plannedDateStr);
-             const mcq = new Date(planned); mcq.setDate(mcq.getDate() + 2);
-             const rev1 = new Date(planned); rev1.setDate(rev1.getDate() + 6);
-             const rev2 = new Date(planned); rev2.setDate(rev2.getDate() + 20);
-             return {
-                 mcq_solving_date: mcq.toISOString().split('T')[0],
-                 first_revision_date: rev1.toISOString().split('T')[0],
-                 second_revision_date: rev2.toISOString().split('T')[0]
-             };
+             try {
+                 const planned = new Date(plannedDateStr);
+                 if (isNaN(planned.getTime())) return null; // Invalid date
+
+                 const mcq = new Date(planned); mcq.setDate(mcq.getDate() + 2);
+                 const rev1 = new Date(planned); rev1.setDate(rev1.getDate() + 6);
+                 const rev2 = new Date(planned); rev2.setDate(rev2.getDate() + 20);
+                 
+                 return {
+                     mcq_solving_date: mcq.toISOString().split('T')[0],
+                     first_revision_date: rev1.toISOString().split('T')[0],
+                     second_revision_date: rev2.toISOString().split('T')[0]
+                 };
+             } catch (e) {
+                 console.error(`Date calculation error for ${plannedDateStr}:`, e);
+                 return null;
+             }
         };
 
         for (const update of updates) {
             if (update.id && update.planned_date) {
                 const revisions = calculateRevisions(update.planned_date);
-                batchUpdates.push({
-                    id: update.id,
-                    planned_date: update.planned_date,
-                    ...revisions,
-                    updated_at: new Date().toISOString()
-                });
+                if (revisions) {
+                    batchUpdates.push({
+                        id: update.id,
+                        planned_date: update.planned_date,
+                        ...revisions,
+                        updated_at: new Date().toISOString()
+                    });
+                }
             }
         }
 
