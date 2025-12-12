@@ -29,19 +29,26 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         // Check active session
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        const initSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchProfile(session.user.id);
+                await fetchProfile(session.user.id);
             }
             setLoading(false);
-        });
+        };
+
+        initSession();
 
         // Listen for changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchProfile(session.user.id);
+                // If it's a LOGIN event, we might need to wait, but usually on refresh getSession handles it.
+                // However, for consistency, we can await here too if we want to block UI updates until profile is ready.
+                // But for onAuthStateChange, it might be better to let it flow to avoid blocking UI on simple updates.
+                // The critical part for "refresh" is the initSession above.
+                await fetchProfile(session.user.id);
             } else {
                 setProfile(null);
             }
