@@ -107,8 +107,36 @@ export const DatabaseProvider = ({ children }) => {
         localStorage.setItem('currentDatabaseId', database.id);
     };
 
+    const deleteDatabase = async (databaseId) => {
+        try {
+            const { error } = await supabase
+                .from('user_databases')
+                .delete()
+                .eq('id', databaseId);
+
+            if (error) throw error;
+
+            setDatabases(prev => {
+                const updated = prev.filter(db => db.id !== databaseId);
+                // If we deleted the current database, switch to another one
+                if (currentDatabase?.id === databaseId) {
+                    if (updated.length > 0) {
+                        switchDatabase(updated[0]);
+                    } else {
+                        setCurrentDatabase(null);
+                        localStorage.removeItem('currentDatabaseId');
+                    }
+                }
+                return updated;
+            });
+        } catch (error) {
+            console.error('Error deleting database:', error);
+            throw error;
+        }
+    };
+
     return (
-        <DatabaseContext.Provider value={{ databases, currentDatabase, loading, createDatabase, switchDatabase, fetchDatabases }}>
+        <DatabaseContext.Provider value={{ databases, currentDatabase, loading, createDatabase, switchDatabase, deleteDatabase, fetchDatabases }}>
             {children}
         </DatabaseContext.Provider>
     );

@@ -15,12 +15,13 @@ import {
     LogOut,
     Plus,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Trash2
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { profile, signOut } = useAuth();
-    const { databases, currentDatabase, switchDatabase, createDatabase } = useDatabase();
+    const { databases, currentDatabase, switchDatabase, createDatabase, deleteDatabase } = useDatabase();
     const isSubscribed = profile?.subscription_status === 'active';
     const [isDbMenuOpen, setIsDbMenuOpen] = useState(false);
     const [isCreatingDb, setIsCreatingDb] = useState(false);
@@ -91,17 +92,33 @@ const Sidebar = ({ isOpen, onClose }) => {
                             <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl shadow-xl z-50 overflow-hidden">
                                 <div className="max-h-48 overflow-y-auto">
                                     {databases.map(db => (
-                                        <button
+                                        <div 
                                             key={db.id}
-                                            onClick={() => {
-                                                switchDatabase(db);
-                                                setIsDbMenuOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-2 text-sm hover:bg-[var(--bg-primary)] flex items-center gap-2 ${currentDatabase?.id === db.id ? 'text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+                                            className={`group flex items-center w-full hover:bg-[var(--bg-primary)] pr-2 ${currentDatabase?.id === db.id ? 'bg-[var(--bg-primary)]' : ''}`}
                                         >
-                                            <span>{db.icon || '📚'}</span>
-                                            <span className="truncate">{db.name}</span>
-                                        </button>
+                                            <button
+                                                onClick={() => {
+                                                    switchDatabase(db);
+                                                    setIsDbMenuOpen(false);
+                                                }}
+                                                className={`flex-1 text-left px-3 py-2 text-sm flex items-center gap-2 ${currentDatabase?.id === db.id ? 'text-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+                                            >
+                                                <span>{db.icon || '📚'}</span>
+                                                <span className="truncate">{db.name}</span>
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (window.confirm(`Are you sure you want to delete "${db.name}"? This cannot be undone.`)) {
+                                                        deleteDatabase(db.id);
+                                                    }
+                                                }}
+                                                className="p-1.5 text-[var(--text-tertiary)] hover:text-red-500 hover:bg-red-500/10 rounded opacity-0 group-hover:opacity-100 transition-all"
+                                                title="Delete Database"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
                                     ))}
                                 </div>
                                 <div className="p-2 border-t border-[var(--border-color)]">

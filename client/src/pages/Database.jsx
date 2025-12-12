@@ -715,12 +715,13 @@ const Database = () => {
                                                 list={`subject-list-${topic.id}`}
                                                 value={topic.subjectCategory || ''}
                                                 onChange={(e) => updateTopic(topic.id, 'subjectCategory', e.target.value)}
-                                                className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs font-medium focus:outline-none focus:border-[var(--primary)]"
+                                                className="w-full px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded text-xs font-medium focus:outline-none focus:border-[var(--primary)] pr-6"
                                                 style={{
                                                     color: topic.subjectCategory ? Utils.getSubjectColor(topic.subjectCategory) : 'inherit'
                                                 }}
                                                 placeholder="Select or type..."
                                             />
+                                            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
                                             <datalist id={`subject-list-${topic.id}`}>
                                                 {subjects.map(subject => (
                                                     <option key={subject} value={subject} />
@@ -1016,8 +1017,9 @@ const Database = () => {
                                         value={newRow.subject_category}
                                         onChange={(e) => setNewRow({ ...newRow, subject_category: e.target.value })}
                                         placeholder="Select or type new subject..."
-                                        className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg focus:outline-none focus:border-[var(--primary)]"
+                                        className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-lg focus:outline-none focus:border-[var(--primary)] pr-8"
                                     />
+                                    <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
                                     <datalist id="subject-options">
                                         {subjects.map(subject => (
                                             <option key={subject} value={subject} />
