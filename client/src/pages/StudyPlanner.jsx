@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDatabase } from '../context/DatabaseContext';
-import { getTopics, generateSchedule, clearSchedule, reschedule } from '../services/api';
+import { getTopics, generateSchedule, clearSchedule, reschedule, generatePrompt } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import { 
     format, startOfMonth, endOfMonth, eachDayOfInterval, 
@@ -41,6 +41,7 @@ const StudyPlanner = () => {
     const [showRescheduler, setShowRescheduler] = useState(false);
     const [reschedulePrompt, setReschedulePrompt] = useState('');
     const [rescheduling, setRescheduling] = useState(false);
+    const [draftingPrompt, setDraftingPrompt] = useState(false);
 
     useEffect(() => {
         if (user && currentDatabase) loadData(false);
@@ -177,6 +178,45 @@ const StudyPlanner = () => {
             if (overdue.length > 0) prompts.unshift(`Move ${overdue.length} overdue topics to next week.`);
             if (topSubject) prompts.unshift(`Move all ${topSubject[0]} topics to next month.`);
             return prompts.slice(0, 4);
+        }
+    };
+
+    const handleAutoDraft = async (type) => {
+        setDraftingPrompt(true);
+        try {
+            const pending = topics.filter(t => t.completed !== 'True');
+            const overdue = pending.filter(t => t.plannedDate && new Date(t.plannedDate) < new Date());
+            const subjects = {};
+            pending.forEach(t => {
+                const s = t.subjectCategory || 'Uncategorized';
+                subjects[s] = (subjects[s] || 0) + 1;
+            });
+            const topSubjects = Object.fromEntries(
+                Object.entries(subjects).sort((a,b) => b[1] - a[1]).slice(0, 3)
+            );
+
+            const stats = {
+                pendingCount: pending.length,
+                overdueCount: overdue.length,
+                topSubjects,
+                recentVelocity: 0 
+            };
+
+            const data = await generatePrompt(stats, type);
+            if (data.prompt) {
+                if (type === 'schedule') {
+                    setGenConfig(prev => ({ ...prev, prompt: data.prompt }));
+                } else {
+                    setReschedulePrompt(data.prompt);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to draft prompt:", err);
+            // Fallback
+            if (type === 'schedule') setGenConfig(prev => ({ ...prev, prompt: "Focus on high yield topics first." }));
+            else setReschedulePrompt("Push overdue tasks to next week.");
+        } finally {
+            setDraftingPrompt(false);
         }
     };
 
@@ -436,9 +476,19 @@ const StudyPlanner = () => {
                                         <label className="block text-sm font-medium text-[var(--text-secondary)]">
                                             Custom Instructions
                                         </label>
-                                        <div className="flex items-center gap-1 text-xs text-[var(--primary)]">
-                                            <Sparkles size={12} />
-                                            <span>AI Suggestions</span>
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => handleAutoDraft('schedule')}
+                                                disabled={draftingPrompt}
+                                                className="text-xs flex items-center gap-1 text-[var(--primary)] hover:underline disabled:opacity-50"
+                                            >
+                                                {draftingPrompt ? <Loader2 size={10} className="animate-spin"/> : <Wand2 size={10} />}
+                                                Draft with AI
+                                            </button>
+                                            <div className="flex items-center gap-1 text-xs text-[var(--primary)]">
+                                                <Sparkles size={12} />
+                                                <span>Suggestions</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <textarea
@@ -593,9 +643,19 @@ const StudyPlanner = () => {
                         <div className="mb-6">
                             <div className="flex items-center justify-between mb-2">
                                 <label className="block text-sm font-medium">Instructions</label>
-                                <div className="flex items-center gap-1 text-xs text-[var(--primary)]">
-                                    <Sparkles size={12} />
-                                    <span>AI Suggestions</span>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => handleAutoDraft('reschedule')}
+                                        disabled={draftingPrompt}
+                                        className="text-xs flex items-center gap-1 text-[var(--primary)] hover:underline disabled:opacity-50"
+                                    >
+                                        {draftingPrompt ? <Loader2 size={10} className="animate-spin"/> : <Wand2 size={10} />}
+                                        Draft with AI
+                                    </button>
+                                    <div className="flex items-center gap-1 text-xs text-[var(--primary)]">
+                                        <Sparkles size={12} />
+                                        <span>Suggestions</span>
+                                    </div>
                                 </div>
                             </div>
                             <textarea

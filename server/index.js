@@ -36,6 +36,57 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET || 'secret_placeholder'
 });
 
+// --- AI Model ---
+let model;
+if (GEMINI_API_KEY) {
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    model = genAI.getGenerativeModel({ model: GEMINI_MODEL_NAME });
+} else {
+    console.warn("⚠️ GEMINI_API_KEY is missing. AI features will not work.");
+}
+
+// --- AI Prompt Generation Endpoint ---
+app.post('/api/generate-prompt', async (req, res) => {
+    if (!model) return res.status(503).json({ error: 'AI not configured' });
+    
+    try {
+        const { stats, type = 'schedule' } = req.body;
+        // stats: { pendingCount, overdueCount, topSubjects: { name: count }, recentVelocity }
+
+        const context = `
+            You are a study coach helping a medical student.
+            
+            Context:
+            - Pending Topics: ${stats.pendingCount}
+            - Overdue Topics: ${stats.overdueCount}
+            - Top Subjects Remaining: ${JSON.stringify(stats.topSubjects)}
+            - Current Pace: ${stats.recentVelocity || 'Unknown'} topics/day
+            
+            Task:
+            Generate a concise, strategic, and actionable instruction for the study planner AI.
+            The user wants a strategy to tackle their workload efficiently.
+            
+            ${type === 'schedule' 
+                ? 'The goal is to create a new schedule. E.g., "Focus on high-yield Anatomy topics for the next 3 days, then switch to Physiology."' 
+                : 'The goal is to RESCHEDULE existing tasks. E.g., "Push all overdue tasks to the weekend and lighten the load for tomorrow."'}
+            
+            Requirements:
+            - Max 2 sentences.
+            - Be specific to the subjects mentioned.
+            - Use a motivating but realistic tone.
+            - Return ONLY the text of the prompt.
+        `;
+
+        const result = await model.generateContent(context);
+        const text = result.response.text();
+        
+        res.json({ prompt: text.trim() });
+    } catch (error) {
+        console.error("AI Prompt Generation Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // --- Payment Endpoints ---
 
 // 1. Create Order
@@ -282,9 +333,7 @@ app.post('/api/payment/verify', async (req, res) => {
 });
 
 // Initialize Services
-// 1. Gemini
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: GEMINI_MODEL_NAME });
+// 1. Gemini (Initialized at top)
 
 const SYSTEM_INSTRUCTION = `You are an expert medical tutor specializing in NEET-PG preparation. 
 Your goal is to help students understand complex medical concepts, clinical cases, and potential exam questions.

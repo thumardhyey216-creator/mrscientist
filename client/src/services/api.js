@@ -586,6 +586,11 @@ class SupabaseAPI extends BaseAPI {
         return response.data;
     }
 
+    async generatePrompt(stats, type) {
+        const response = await api.post('/api/generate-prompt', { stats, type });
+        return response.data;
+    }
+
 }
 
 // Select API based on config
@@ -616,6 +621,7 @@ export const saveDatabaseView = (data) => backendAPI.saveDatabaseView(data);
 export const generateSchedule = (params) => backendAPI.generateSchedule(params);
 export const reschedule = (params) => backendAPI.reschedule(params);
 export const clearSchedule = (userId, databaseId) => backendAPI.clearSchedule(userId, databaseId);
+export const generatePrompt = (stats, type) => backendAPI.generatePrompt(stats, type);
 
 export const askAI = async (prompt, userId, databaseId) => {
     const response = await api.post('/api/ask-ai', { prompt, user_id: userId, database_id: databaseId });
