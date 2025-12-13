@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { supabase } from '../lib/supabase'; // Import Supabase client
 import { CONFIG } from '../config';
 
 // Base axios instance
@@ -307,11 +308,81 @@ class SupabaseAPI extends BaseAPI {
     }
 
     async initializeUser(userId, databaseId) {
-        const payload = { user_id: userId };
-        if (databaseId) payload.database_id = databaseId;
-        const response = await api.post(`${this.baseUrl}/initialize`, payload);
-        this.cache.timestamp = null; 
-        return response.data;
+        try {
+            const payload = { user_id: userId };
+            if (databaseId) payload.database_id = databaseId;
+            const response = await api.post(`${this.baseUrl}/initialize`, payload);
+            this.cache.timestamp = null; 
+            return response.data;
+        } catch (error) {
+            console.warn("Backend initialization failed, trying client-side fallback...", error);
+            
+            // Client-Side Fallback (Vercel Support)
+            try {
+                // 1. Check if DB exists
+                const { data: dbs } = await supabase
+                    .from('user_databases')
+                    .select('*')
+                    .eq('user_id', userId);
+
+                let targetDbId = databaseId;
+                
+                if (!dbs || dbs.length === 0) {
+                     // Create default DB
+                     const { data: newDb, error: dbError } = await supabase
+                        .from('user_databases')
+                        .insert([{
+                            user_id: userId,
+                            name: 'Default Study Plan',
+                            is_default: true
+                        }])
+                        .select()
+                        .single();
+                    
+                    if (dbError) throw dbError;
+                    targetDbId = newDb.id;
+                    console.log("Created default database locally:", targetDbId);
+                } else if (!targetDbId) {
+                    targetDbId = dbs[0].id;
+                }
+
+                // 2. Check if topics exist
+                const { count } = await supabase
+                    .from('topics')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('database_id', targetDbId);
+
+                if (count === 0) {
+                    console.log("Initializing default topics locally...");
+                    // Insert minimal default topics to get started
+                    const defaultTopics = [
+                        { topic_name: 'General Anatomy', subject_category: 'Anatomy', priority: 'High', duration: 120 },
+                        { topic_name: 'Upper Limb', subject_category: 'Anatomy', priority: 'Medium', duration: 90 },
+                        { topic_name: 'General Physiology', subject_category: 'Physiology', priority: 'High', duration: 120 },
+                        { topic_name: 'Nerve Muscle Physiology', subject_category: 'Physiology', priority: 'Medium', duration: 60 },
+                        { topic_name: 'General Pathology', subject_category: 'Pathology', priority: 'High', duration: 120 },
+                        { topic_name: 'General Pharmacology', subject_category: 'Pharmacology', priority: 'High', duration: 120 }
+                    ].map(t => ({
+                        ...t,
+                        user_id: userId,
+                        database_id: targetDbId,
+                        completed: 'False',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }));
+
+                    const { error: insertError } = await supabase.from('topics').insert(defaultTopics);
+                    if (insertError) throw insertError;
+                    console.log("Initialized default topics.");
+                }
+
+                return { success: true, message: "Initialized locally" };
+
+            } catch (fallbackError) {
+                console.error("Client-side initialization failed:", fallbackError);
+                throw fallbackError; // Rethrow if fallback also fails
+            }
+        }
     }
 
     transformTopics(rawData) {
