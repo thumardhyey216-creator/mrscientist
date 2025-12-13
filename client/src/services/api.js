@@ -3,8 +3,16 @@ import { supabase } from '../lib/supabase'; // Import Supabase client
 import { CONFIG } from '../config';
 
 // Base axios instance
+const getBaseUrl = () => {
+    const url = import.meta.env.VITE_API_URL;
+    if (!url && import.meta.env.PROD) {
+        console.warn('VITE_API_URL is not defined! Backend calls may fail.');
+    }
+    return url || '';
+};
+
 export const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || '', // Use env var in prod, relative path (proxy) in dev
+    baseURL: getBaseUrl(),
     headers: {
         'Content-Type': 'application/json',
     },
@@ -643,12 +651,11 @@ const backendAPI = (CONFIG.DATA_SOURCE === 'supabase' || CONFIG.DATA_SOURCE === 
 
 // Export accessors
 export const getTopics = (useCache, userId, databaseId) => backendAPI.queryDatabase(useCache, userId, databaseId);
-export const initializeUser = async (userId, databaseId = null) => {
+export const initializeUser = async (userId) => {
     try {
-        if (!databaseId) {
-            // ...
-        }
-        // ...
+        // Call backend to initialize user data (create default DB and copy master syllabus)
+        const response = await api.post('/api/supabase/initialize', { user_id: userId });
+        return response.data;
     } catch (error) {
         console.error('Initialize user error:', error);
         throw error;

@@ -44,7 +44,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                 } else {
                     setServerStatus('disconnected');
                 }
-            } catch (error) {
+            } catch {
                 setServerStatus('disconnected');
             }
         };

@@ -725,6 +725,7 @@ const Analytics = () => {
     );
 };
 
+// eslint-disable-next-line no-unused-vars
 const KpiCard = ({ title, value, subtitle, icon: IconComponent, color, bg }) => (
     <div className="glass-card p-5 rounded-xl border border-[var(--border-subtle)] hover:shadow-lg transition-all duration-300">
         <div className="flex items-start justify-between">
