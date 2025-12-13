@@ -14,7 +14,7 @@ export const AuthProvider = ({ children }) => {
                 .select('*')
                 .eq('id', userId)
                 .single();
-            
+
             if (error && error.code !== 'PGRST116') {
                 console.error('Error fetching profile:', error);
             }
@@ -78,7 +78,7 @@ export const AuthProvider = ({ children }) => {
         if (error) throw error;
         return data;
     };
-    
+
     const signInWithGoogle = async () => {
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
@@ -115,7 +115,13 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={{ user, profile, signUp, signIn, signInWithGoogle, signInWithOtp, verifyOtp, signOut, loading }}>
-            {!loading && children}
+            {loading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-app, #1a1b1e)', color: 'var(--text-main, white)' }}>
+                    <div className="spinner"></div>
+                </div>
+            ) : (
+                children
+            )}
         </AuthContext.Provider>
     );
 };
