@@ -33,8 +33,10 @@ class BaseAPI {
         this.cache = { data: null, timestamp: null };
     }
 
-    isCacheValid() {
+    isCacheValid(userId = null, databaseId = null) {
         if (!this.cache.data || !this.cache.timestamp) return false;
+        if (userId && this.cache.userId !== userId) return false;
+        if (databaseId && this.cache.databaseId !== databaseId) return false;
         return (Date.now() - this.cache.timestamp) < CONFIG.CACHE_DURATION;
     }
 
@@ -302,8 +304,8 @@ class SupabaseAPI extends BaseAPI {
     }
 
     async queryDatabase(useCache = true, userId = null, databaseId = null) {
-        // Cache key should probably include userId, but for now assuming single user session per load
-        if (useCache && this.isCacheValid()) return this.cache.data;
+        // Cache now validates userId and databaseId to prevent data leaks
+        if (useCache && this.isCacheValid(userId, databaseId)) return this.cache.data;
 
         try {
             const params = { user_id: userId };
@@ -311,7 +313,7 @@ class SupabaseAPI extends BaseAPI {
             
             const response = await api.get(`${this.baseUrl}/topics`, { params });
             const transformed = this.transformTopics(response.data);
-            this.cache = { data: transformed, timestamp: Date.now() };
+            this.cache = { data: transformed, timestamp: Date.now(), userId, databaseId };
             return transformed;
         } catch (error) {
             console.warn('Backend query failed, trying client-side fallback...', error);
@@ -333,7 +335,7 @@ class SupabaseAPI extends BaseAPI {
                 
                 // Transform data to match frontend expectations
                 const transformed = this.transformTopics(data);
-                this.cache = { data: transformed, timestamp: Date.now() };
+                this.cache = { data: transformed, timestamp: Date.now(), userId, databaseId };
                 return transformed;
 
             } catch (fallbackError) {
