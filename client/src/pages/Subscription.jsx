@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
 import { createPaymentOrder, verifyPayment, startTrial } from '../services/api';
 import { Check, CreditCard, Loader2, ShieldCheck } from 'lucide-react';
@@ -76,14 +77,58 @@ const Subscription = () => {
         setLoading(true);
         setError('');
         try {
-            await startTrial(user.id);
+            // DIRECT SUPABASE UPDATE (Bypassing Server for Vercel compatibility)
+            // Since the server might not be deployed yet, we allow client-side activation
+            // RLS policy "Users can update own profile" allows this.
+            
+            const expiryDate = new Date();
+            expiryDate.setDate(expiryDate.getDate() + 7); // 7 Days
+
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                    subscription_status: 'active',
+                    subscription_plan: 'free_trial',
+                    subscription_expiry: expiryDate.toISOString(),
+                    trial_used: true
+                })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
             await refreshProfile();
             alert('7-Day Free Trial Activated! 🚀');
             navigate('/dashboard');
         } catch (err) {
             console.error("Trial Error", err);
-            const msg = err.response?.data?.error || err.message || 'Failed to start trial.';
+            const msg = err.message || 'Failed to start trial.';
             setError(msg);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFreeTier = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            // Activate Free Tier directly
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({
+                    subscription_status: 'active',
+                    subscription_plan: 'free_tier'
+                })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
+            await refreshProfile();
+            alert('Free Tier Activated! (Limited Features)');
+            navigate('/dashboard');
+        } catch (err) {
+            console.error("Free Tier Error", err);
+            setError(err.message || 'Failed to activate free tier.');
         } finally {
             setLoading(false);
         }
@@ -154,6 +199,14 @@ const Subscription = () => {
                         className="w-full btn bg-transparent border border-[var(--border-primary)] text-[var(--text-primary)] py-3 text-lg font-semibold flex items-center justify-center gap-2 hover:bg-[var(--bg-secondary)] transition-colors"
                     >
                         Start 7-Day Free Trial
+                    </button>
+
+                    <button
+                        onClick={handleFreeTier}
+                        disabled={loading}
+                        className="w-full text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] underline mt-2"
+                    >
+                        Continue with Limited Free Plan
                     </button>
                 </div>
 
