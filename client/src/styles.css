@@ -30,6 +30,7 @@
 
     /* Backgrounds: Deep Obsidian / Midnight */
     --bg-app: #030014;
+    --bg-primary: #030014;
     /* Ultra dark violet/black */
     --bg-secondary: #0f172a;
     --bg-card: rgba(30, 41, 59, 0.6);
@@ -45,6 +46,7 @@
 
     /* Borders & Effects */
     --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-primary: rgba(255, 255, 255, 0.08);
     --border-highlight: rgba(139, 92, 246, 0.3);
     --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.15);
