@@ -310,8 +310,32 @@ class SupabaseAPI extends BaseAPI {
             this.cache = { data: transformed, timestamp: Date.now() };
             return transformed;
         } catch (error) {
-            console.error('Supabase API Error:', error);
-            throw error;
+            console.warn('Backend query failed, trying client-side fallback...', error);
+            
+            try {
+                // Fallback: Query Supabase directly
+                let query = supabase
+                    .from('topics')
+                    .select('*')
+                    .eq('user_id', userId);
+                
+                if (databaseId) {
+                    query = query.eq('database_id', databaseId);
+                }
+
+                const { data, error: dbError } = await query;
+                
+                if (dbError) throw dbError;
+                
+                // Transform data to match frontend expectations
+                const transformed = this.transformTopics(data);
+                this.cache = { data: transformed, timestamp: Date.now() };
+                return transformed;
+
+            } catch (fallbackError) {
+                console.error('Client-side query fallback failed:', fallbackError);
+                throw fallbackError;
+            }
         }
     }
 
@@ -651,16 +675,7 @@ const backendAPI = (CONFIG.DATA_SOURCE === 'supabase' || CONFIG.DATA_SOURCE === 
 
 // Export accessors
 export const getTopics = (useCache, userId, databaseId) => backendAPI.queryDatabase(useCache, userId, databaseId);
-export const initializeUser = async (userId) => {
-    try {
-        // Call backend to initialize user data (create default DB and copy master syllabus)
-        const response = await api.post('/api/supabase/initialize', { user_id: userId });
-        return response.data;
-    } catch (error) {
-        console.error('Initialize user error:', error);
-        throw error;
-    }
-};
+export const initializeUser = (userId, databaseId) => backendAPI.initializeUser(userId, databaseId);
 export const markComplete = (id) => backendAPI.markComplete(id);
 export const getPageBlocks = (pageId) => backendAPI.getPageBlocks(pageId);
 export const updateBlock = (blockId, blockType, content) => backendAPI.updateBlock(blockId, blockType, content);
