@@ -152,13 +152,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={{ user, profile, signUp, signIn, signInWithGoogle, signInWithOtp, verifyOtp, signOut, loading, refreshProfile }}>
-            {loading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-app, #1a1b1e)', color: 'var(--text-main, white)' }}>
-                    <div className="spinner"></div>
-                </div>
-            ) : (
-                children
-            )}
+            {children}
         </AuthContext.Provider>
     );
 };
