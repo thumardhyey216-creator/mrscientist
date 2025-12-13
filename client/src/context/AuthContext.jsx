@@ -138,6 +138,11 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // New: Allow manual update of profile state for instant UI feedback
+    const updateProfileLocally = (newProfileData) => {
+        setProfile(prev => ({ ...prev, ...newProfileData }));
+    };
+
     const signOut = async () => {
         try {
             const { error } = await supabase.auth.signOut();
@@ -151,7 +156,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, profile, signUp, signIn, signInWithGoogle, signInWithOtp, verifyOtp, signOut, loading, refreshProfile }}>
+        <AuthContext.Provider value={{ user, profile, signUp, signIn, signInWithGoogle, signInWithOtp, verifyOtp, signOut, loading, refreshProfile, updateProfileLocally }}>
             {children}
         </AuthContext.Provider>
     );

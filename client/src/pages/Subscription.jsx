@@ -6,7 +6,7 @@ import { createPaymentOrder, verifyPayment } from '../services/api';
 import { Check, CreditCard, Loader2, ShieldCheck } from 'lucide-react';
 
 const Subscription = () => {
-    const { user, refreshProfile } = useAuth();
+    const { user, refreshProfile, updateProfileLocally } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -77,32 +77,46 @@ const Subscription = () => {
         setLoading(true);
         setError('');
         try {
-            // DIRECT SUPABASE UPDATE (Bypassing Server for Vercel compatibility)
-            // Since the server might not be deployed yet, we allow client-side activation
-            // RLS policy "Users can update own profile" allows this.
-            
             const expiryDate = new Date();
             expiryDate.setDate(expiryDate.getDate() + 7); // 7 Days
+            const expiryISO = expiryDate.toISOString();
 
+            // 1. Optimistic Update (Instant Feedback)
+            const trialData = {
+                subscription_status: 'active',
+                subscription_plan: 'free_trial',
+                subscription_expiry: expiryISO,
+                trial_used: true
+            };
+            updateProfileLocally(trialData);
+            
+            // 2. Background Database Update
+            // We use 'upsert' to handle cases where profile might be missing
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({
-                    subscription_status: 'active',
-                    subscription_plan: 'free_trial',
-                    subscription_expiry: expiryDate.toISOString(),
-                    trial_used: true
-                })
-                .eq('id', user.id);
+                .upsert({
+                    id: user.id,
+                    ...trialData,
+                    updated_at: new Date().toISOString()
+                });
 
-            if (updateError) throw updateError;
+            if (updateError) {
+                // Revert optimistic update if DB fails (optional, but good practice)
+                // For now, we'll just throw and show error, user might need to refresh
+                throw updateError;
+            }
 
-            await refreshProfile();
+            // No need to await refreshProfile() since we updated locally
+            refreshProfile(); // Fire and forget to ensure sync eventually
+            
             alert('7-Day Free Trial Activated! 🚀');
             navigate('/dashboard');
         } catch (err) {
             console.error("Trial Error", err);
             const msg = err.message || 'Failed to start trial.';
             setError(msg);
+            // Force refresh to revert optimistic update in case of error
+            refreshProfile();
         } finally {
             setLoading(false);
         }
@@ -112,23 +126,32 @@ const Subscription = () => {
         setLoading(true);
         setError('');
         try {
-            // Activate Free Tier directly
+            // 1. Optimistic Update
+            const freeData = {
+                subscription_status: 'active',
+                subscription_plan: 'free_tier'
+            };
+            updateProfileLocally(freeData);
+
+            // 2. Database Update
             const { error: updateError } = await supabase
                 .from('profiles')
-                .update({
-                    subscription_status: 'active',
-                    subscription_plan: 'free_tier'
-                })
-                .eq('id', user.id);
+                .upsert({
+                    id: user.id,
+                    ...freeData,
+                    updated_at: new Date().toISOString()
+                });
 
             if (updateError) throw updateError;
 
-            await refreshProfile();
+            refreshProfile(); // Fire and forget
+            
             alert('Free Tier Activated! (Limited Features)');
             navigate('/dashboard');
         } catch (err) {
             console.error("Free Tier Error", err);
             setError(err.message || 'Failed to activate free tier.');
+            refreshProfile();
         } finally {
             setLoading(false);
         }
