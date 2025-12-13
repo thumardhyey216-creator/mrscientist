@@ -132,13 +132,21 @@ export const AuthProvider = ({ children }) => {
         return data;
     };
 
+    const refreshProfile = async () => {
+        if (user) {
+            await fetchProfile(user.id);
+        }
+    };
+
     const signOut = async () => {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
+        setUser(null);
+        setProfile(null);
     };
 
     return (
-        <AuthContext.Provider value={{ user, profile, signUp, signIn, signInWithGoogle, signInWithOtp, verifyOtp, signOut, loading }}>
+        <AuthContext.Provider value={{ user, profile, signUp, signIn, signInWithGoogle, signInWithOtp, verifyOtp, signOut, loading, refreshProfile }}>
             {loading ? (
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-app, #1a1b1e)', color: 'var(--text-main, white)' }}>
                     <div className="spinner"></div>

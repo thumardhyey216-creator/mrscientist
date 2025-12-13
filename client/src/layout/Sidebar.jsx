@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { useDatabase } from '../context/useDatabase';
 import {
@@ -21,6 +21,7 @@ import {
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { profile, signOut } = useAuth();
+    const navigate = useNavigate();
     const { databases = [], currentDatabase, switchDatabase, createDatabase, deleteDatabase } = useDatabase();
     const isSubscribed = profile?.subscription_status === 'active';
     const [isDbMenuOpen, setIsDbMenuOpen] = useState(false);
@@ -44,6 +45,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     const handleLogout = async () => {
         try {
             await signOut();
+            navigate('/login');
         } catch (error) {
             console.error('Logout failed:', error);
         }

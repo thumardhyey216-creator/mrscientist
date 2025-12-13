@@ -5,7 +5,7 @@ import { createPaymentOrder, verifyPayment, startTrial } from '../services/api';
 import { Check, CreditCard, Loader2, ShieldCheck } from 'lucide-react';
 
 const Subscription = () => {
-    const { user } = useAuth();
+    const { user, refreshProfile } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -38,6 +38,7 @@ const Subscription = () => {
                         });
 
                         if (verifyRes.success) {
+                            await refreshProfile();
                             alert('Subscription Activated Successfully! 🎉');
                             navigate('/dashboard');
                         }
@@ -76,6 +77,7 @@ const Subscription = () => {
         setError('');
         try {
             await startTrial(user.id);
+            await refreshProfile();
             alert('7-Day Free Trial Activated! 🚀');
             navigate('/dashboard');
         } catch (err) {
