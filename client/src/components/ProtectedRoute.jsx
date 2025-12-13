@@ -21,8 +21,14 @@ const ProtectedRoute = ({ children, requireSubscription = true }) => {
     // Check Subscription
     if (requireSubscription) {
         const isSubscribed = profile?.subscription_status === 'active';
-        // You might also want to check expiry date here
-        if (!isSubscribed) {
+        
+        // Check expiry if it exists
+        let isExpired = false;
+        if (profile?.subscription_expiry) {
+            isExpired = new Date() > new Date(profile.subscription_expiry);
+        }
+
+        if (!isSubscribed || isExpired) {
              return <Navigate to="/subscription" replace />;
         }
     }

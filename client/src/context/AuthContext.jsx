@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { AuthContext } from './contexts';
+import { clearCache } from '../services/api';
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
@@ -147,6 +148,11 @@ export const AuthProvider = ({ children }) => {
         try {
             const { error } = await supabase.auth.signOut();
             if (error) console.error('Supabase signOut error:', error);
+            
+            // Clear App State
+            clearCache();
+            localStorage.removeItem('currentDatabaseId');
+            
         } catch (error) {
             console.error('SignOut exception:', error);
         } finally {

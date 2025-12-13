@@ -29,6 +29,10 @@ class BaseAPI {
         };
     }
 
+    clearCache() {
+        this.cache = { data: null, timestamp: null };
+    }
+
     isCacheValid() {
         if (!this.cache.data || !this.cache.timestamp) return false;
         return (Date.now() - this.cache.timestamp) < CONFIG.CACHE_DURATION;
@@ -728,5 +732,7 @@ export const verifyPayment = async (paymentData) => {
     const response = await api.post('/api/payment/verify', paymentData);
     return response.data;
 };
+
+export const clearCache = () => backendAPI.clearCache();
 
 export default backendAPI;
