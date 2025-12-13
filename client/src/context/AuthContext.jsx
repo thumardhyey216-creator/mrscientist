@@ -25,20 +25,34 @@ export const AuthProvider = ({ children }) => {
     };
 
     useEffect(() => {
+        console.log('🔄 AuthContext: Starting initialization...');
+        let timeoutId = null;
+
+        // Fallback: Force loading to false after 10 seconds
+        timeoutId = setTimeout(() => {
+            console.error('⚠️ AuthContext: Timeout! Forcing loading to false after 10s');
+            setLoading(false);
+        }, 10000);
+
         // Check active session
         const initSession = async () => {
+            console.log('🔄 AuthContext: Calling supabase.auth.getSession()...');
             try {
                 const { data: { session }, error } = await supabase.auth.getSession();
+                console.log('✅ AuthContext: getSession complete', { hasSession: !!session, error });
                 if (error) {
-                    console.error('Session fetch error:', error);
+                    console.error('❌ AuthContext: Session fetch error:', error);
                 }
                 setUser(session?.user ?? null);
                 if (session?.user) {
+                    console.log('🔄 AuthContext: Fetching profile for user:', session.user.id);
                     await fetchProfile(session.user.id);
                 }
             } catch (err) {
-                console.error('Auth initialization error:', err);
+                console.error('❌ AuthContext: Auth initialization error:', err);
             } finally {
+                console.log('✅ AuthContext: Setting loading to false');
+                clearTimeout(timeoutId);
                 setLoading(false);
             }
         };
@@ -46,13 +60,11 @@ export const AuthProvider = ({ children }) => {
         initSession();
 
         // Listen for changes
+        console.log('🔄 AuthContext: Setting up onAuthStateChange listener...');
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            console.log('🔔 AuthContext: onAuthStateChange fired', { event: _event, hasSession: !!session });
             setUser(session?.user ?? null);
             if (session?.user) {
-                // If it's a LOGIN event, we might need to wait, but usually on refresh getSession handles it.
-                // However, for consistency, we can await here too if we want to block UI updates until profile is ready.
-                // But for onAuthStateChange, it might be better to let it flow to avoid blocking UI on simple updates.
-                // The critical part for "refresh" is the initSession above.
                 await fetchProfile(session.user.id);
             } else {
                 setProfile(null);
@@ -60,7 +72,11 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
         });
 
-        return () => subscription.unsubscribe();
+        return () => {
+            console.log('🧹 AuthContext: Cleaning up...');
+            clearTimeout(timeoutId);
+            subscription.unsubscribe();
+        };
     }, []);
 
     const signUp = async (email, password, fullName) => {

@@ -8,6 +8,8 @@ import './animations.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 
+console.log('🚀 main.jsx: App starting...');
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
