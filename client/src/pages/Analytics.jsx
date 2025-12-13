@@ -725,7 +725,7 @@ const Analytics = () => {
     );
 };
 
-const KpiCard = ({ title, value, subtitle, icon: Icon, color, bg }) => (
+const KpiCard = ({ title, value, subtitle, icon: IconComponent, color, bg }) => (
     <div className="glass-card p-5 rounded-xl border border-[var(--border-subtle)] hover:shadow-lg transition-all duration-300">
         <div className="flex items-start justify-between">
             <div>
@@ -733,9 +733,8 @@ const KpiCard = ({ title, value, subtitle, icon: Icon, color, bg }) => (
                 <h4 className="text-2xl font-bold mt-2">{value}</h4>
                 <p className="text-xs text-[var(--text-tertiary)] mt-1">{subtitle}</p>
             </div>
-            {/* eslint-disable-next-line no-unused-vars */}
             <div className={`p-3 rounded-lg ${bg}`} style={{ color: color }}>
-                <Icon size={20} />
+                <IconComponent size={20} />
             </div>
         </div>
     </div>

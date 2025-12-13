@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'; // Import Supabase client
 import { CONFIG } from '../config';
 
 // Base axios instance
-const api = axios.create({
+export const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || '', // Use env var in prod, relative path (proxy) in dev
     headers: {
         'Content-Type': 'application/json',

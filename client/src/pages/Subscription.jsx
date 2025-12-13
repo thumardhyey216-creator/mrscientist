@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
-import { createPaymentOrder, verifyPayment, startTrial } from '../services/api';
+import { createPaymentOrder, verifyPayment } from '../services/api';
 import { Check, CreditCard, Loader2, ShieldCheck } from 'lucide-react';
 
 const Subscription = () => {

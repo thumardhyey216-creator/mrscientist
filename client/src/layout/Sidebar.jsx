@@ -16,8 +16,11 @@ import {
     Plus,
     ChevronDown,
     ChevronUp,
-    Trash2
+    Trash2,
+    Wifi,
+    WifiOff
 } from 'lucide-react';
+import { api } from '../services/api';
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { profile, signOut } = useAuth();
@@ -28,6 +31,28 @@ const Sidebar = ({ isOpen, onClose }) => {
     const [isCreatingDb, setIsCreatingDb] = useState(false);
     const [newDbName, setNewDbName] = useState('');
     const [shouldInitialize, setShouldInitialize] = useState(true);
+    const [serverStatus, setServerStatus] = useState('checking'); // 'connected', 'disconnected', 'checking'
+
+    // Check Server Status
+    React.useEffect(() => {
+        const checkStatus = async () => {
+            try {
+                const res = await api.get('/');
+                // Verify it's actually the backend, not the frontend HTML
+                if (res.data && typeof res.data === 'string' && res.data.includes('MedTutor')) {
+                    setServerStatus('connected');
+                } else {
+                    setServerStatus('disconnected');
+                }
+            } catch (error) {
+                setServerStatus('disconnected');
+            }
+        };
+        
+        checkStatus();
+        const interval = setInterval(checkStatus, 30000); // Check every 30s
+        return () => clearInterval(interval);
+    }, []);
 
     const handleCreateDb = async (e) => {
         e.preventDefault();
@@ -193,6 +218,25 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </nav>
 
                 <div className="p-4 mt-auto space-y-4">
+                    {/* Server Status Indicator */}
+                    <div 
+                        className={`px-4 py-2 text-xs flex items-center gap-2 rounded-lg transition-colors border ${
+                            serverStatus === 'connected' ? 'text-green-400 bg-green-400/10 border-green-400/20' : 
+                            serverStatus === 'disconnected' ? 'text-red-400 bg-red-400/10 border-red-400/20' : 
+                            'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'
+                        }`}
+                        title={serverStatus === 'disconnected' ? 'Backend unreachable. AI & Payments disabled.' : 'Backend connected'}
+                    >
+                        {serverStatus === 'connected' && <Wifi size={14} />}
+                        {serverStatus === 'disconnected' && <WifiOff size={14} />}
+                        {serverStatus === 'checking' && <span className="animate-pulse">●</span>}
+                        
+                        <span className="font-medium">
+                            {serverStatus === 'connected' ? 'Online' : 
+                            serverStatus === 'disconnected' ? 'Offline' : 'Connecting...'}
+                        </span>
+                    </div>
+
                     <button
                         onClick={handleLogout}
                         className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 w-full text-[var(--text-secondary)] hover:bg-red-500/10 hover:text-red-400 group"
