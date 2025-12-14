@@ -39,7 +39,7 @@ const StatCard = React.memo(({ label, value, subtext, icon, gradient, trend }) =
             </div>
         </div>
     );
-};
+});
 
 export default StatCard;
 

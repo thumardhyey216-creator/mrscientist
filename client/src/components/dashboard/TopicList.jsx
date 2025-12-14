@@ -105,7 +105,7 @@ const TopicList = React.memo(({ title, topics, emptyMessage, emptyIcon, onMarkCo
             </div>
         </div>
     );
-};
+});
 
 export default TopicList;
 

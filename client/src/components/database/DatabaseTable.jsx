@@ -84,6 +84,6 @@ const DatabaseTable = React.memo(({ topics, onSelectTopic }) => {
             </div>
         </div>
     );
-};
+});
 
 export default DatabaseTable;
