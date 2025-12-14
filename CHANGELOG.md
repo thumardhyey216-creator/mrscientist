@@ -16,4 +16,12 @@
   - Added `React.memo` to `TopicList`, `StatCard`, and `DatabaseTable` to prevent unnecessary re-renders and improve scrolling performance.
 
 ### Fixes
-- Fixed potential "brainstorm" slowness by addressing bottlenecks in data fetching and AI processing.
+- **Reschedule Logic**:
+  - Fixed an issue where the AI didn't know "Today's Date", causing failures when rescheduling with relative dates (e.g., "before April 5").
+  - Added explicit instructions to the AI prompt to handle "deadline-based" rescheduling (fitting all topics before a specific date).
+  - "Trained" the AI model via prompt engineering to handle complex scenarios:
+    - Shifting schedules ("Push by X days", "I was sick").
+    - Compression ("Finish by [Date]").
+    - Constraints ("Free up weekends", "Focus on Subject").
+    - Provided few-shot examples in the prompt to ensure consistent JSON output.
+  - Fixed potential "brainstorm" slowness by addressing bottlenecks in data fetching and AI processing.

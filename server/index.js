@@ -1126,17 +1126,32 @@ app.post('/api/reschedule', async (req, res) => {
         const aiPrompt = `
             You are an intelligent study scheduler. The user wants to reschedule their existing plan.
             
-            User Request: "${prompt}"
+            Context:
+            - Today's Date: ${new Date().toISOString().split('T')[0]}
+            - User Request: "${prompt}"
             
             Current Schedule (JSON):
             ${JSON.stringify(simplifiedTopics)}
             
-            Task:
-            1. Analyze the user's request (e.g., "Push everything by 1 day", "Move Biology to next week", "Free up this weekend").
-            2. Return a JSON array of objects with the updated "planned_date" for the topics that need changing.
-            3. You MUST keep the "id" exactly as provided.
-            4. Format dates as "YYYY-MM-DD".
-            5. If a topic's date doesn't change, you can omit it or include it with the same date.
+            INSTRUCTIONS:
+            1. Understand the Intent: Analyze if the user wants to SHIFT dates, COMPRESS to a deadline, FILTER by subject, or CHANGE study days.
+            2. Logic:
+               - "Push by X days": Add X days to every planned_date.
+               - "Finish by [Date]": Distribute all topics evenly between Today and [Date].
+               - "Free up weekends": Move any task on Sat/Sun to the nearest weekday.
+               - "Focus on [Subject]": Move [Subject] topics to the earliest available slots.
+               - "I was sick": Move past/today's tasks to tomorrow + shift future tasks.
+            3. Constraints:
+               - Keep "id" exactly as provided.
+               - Date format: "YYYY-MM-DD".
+               - Return ONLY the modified topics.
+
+            EXAMPLES:
+            - User: "Push everything by 1 day"
+              Output: [{"id": "1", "planned_date": "2024-03-02"}, ...] (if orig was 2024-03-01)
+            
+            - User: "Finish all 5 topics before Friday (2024-03-10)"
+              Output: Distribute them 2024-03-06, 07, 08, 09...
             
             Output Format:
             [
