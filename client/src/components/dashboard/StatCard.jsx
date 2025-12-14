@@ -1,6 +1,6 @@
 import React from 'react';
 
-const StatCard = ({ label, value, subtext, icon, gradient, trend }) => {
+const StatCard = React.memo(({ label, value, subtext, icon, gradient, trend }) => {
     return (
         <div className="group glass-card p-6 relative overflow-hidden hover-scale transition-all duration-300">
             {/* Background Glow */}

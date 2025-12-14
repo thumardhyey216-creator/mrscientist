@@ -2,7 +2,7 @@ import React from 'react';
 import { Utils } from '../../utils';
 import { Clock, Tag, ArrowRight, Check } from 'lucide-react';
 
-const TopicList = ({ title, topics, emptyMessage, emptyIcon, onMarkComplete, onViewDetails, type = 'focus' }) => {
+const TopicList = React.memo(({ title, topics, emptyMessage, emptyIcon, onMarkComplete, onViewDetails, type = 'focus' }) => {
 
     if (!topics || topics.length === 0) {
         return (

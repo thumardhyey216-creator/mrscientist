@@ -601,7 +601,19 @@ class SupabaseAPI extends BaseAPI {
 
     async getRevisionInsights(topics) {
         console.log('📡 SupabaseAPI: Requesting insights for', topics?.length, 'topics');
-        const response = await api.post('/api/revision-insights', { topics });
+        
+        // Optimize payload: Only send essential fields to reduce request size
+        const minimalTopics = topics.map(t => ({
+            id: t.id,
+            topicName: t.topicName,
+            subjectCategory: t.subjectCategory,
+            priority: t.priority,
+            completed: t.completed,
+            lastEditedTime: t.lastEditedTime,
+            plannedDate: t.plannedDate
+        }));
+
+        const response = await api.post('/api/revision-insights', { topics: minimalTopics });
         console.log('📡 SupabaseAPI: Received insights:', response.data);
         return response.data;
     }
@@ -705,7 +717,34 @@ export const clearSchedule = (userId, databaseId) => backendAPI.clearSchedule(us
 export const generatePrompt = (stats, type) => backendAPI.generatePrompt(stats, type);
 
 export const askAI = async (prompt, userId, databaseId) => {
+    // Simple Session Caching for AI responses to improve performance
+    const cacheKey = `ask_ai_${userId}_${databaseId}_${prompt}`; 
+    const cached = sessionStorage.getItem(cacheKey);
+    
+    if (cached) {
+        try {
+            const { data, timestamp } = JSON.parse(cached);
+            // Valid for 5 minutes
+            if (Date.now() - timestamp < 300000) {
+                console.log('Using cached AI response');
+                return data;
+            }
+        } catch (e) {
+            console.warn('Cache parse error', e);
+        }
+    }
+
     const response = await api.post('/api/ask-ai', { prompt, user_id: userId, database_id: databaseId });
+    
+    try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+            data: response.data,
+            timestamp: Date.now()
+        }));
+    } catch (e) {
+        console.warn('Failed to cache AI response', e);
+    }
+    
     return response.data;
 };
 

@@ -450,7 +450,12 @@ app.post('/api/ask-ai', async (req, res) => {
                 const { data: topics, error } = await query.limit(15);
 
                 if (!error && topics && topics.length > 0) {
-                    context = JSON.stringify(topics, null, 2);
+                    // Optimize context: truncate notes to reduce token usage and latency
+                    const optimizedTopics = topics.map(t => ({
+                        ...t,
+                        notes: t.notes ? t.notes.substring(0, 300) + (t.notes.length > 300 ? '...' : '') : undefined
+                    }));
+                    context = JSON.stringify(optimizedTopics, null, 2);
                 }
             } catch (err) {
                 console.error("Context retrieval error:", err);
@@ -743,7 +748,9 @@ app.get('/api/supabase/topics', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Supabase not configured' });
     const { user_id, database_id } = req.query;
     
-    let query = supabase.from('topics').select('*');
+    // Exclude large 'notes' field for list view performance
+    const columns = 'id, user_id, database_id, notion_id, created_at, updated_at, topic_name, subject_category, no, priority, source, duration, planned_date, mcq_solving_date, first_revision_date, second_revision_date, completed, first_revision, second_revision, times_repeated, pyq_asked, custom_data, parent_id';
+    let query = supabase.from('topics').select(columns);
     
     if (user_id) {
         query = query.eq('user_id', user_id);

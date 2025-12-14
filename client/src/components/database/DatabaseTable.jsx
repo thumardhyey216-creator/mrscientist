@@ -2,7 +2,7 @@ import React from 'react';
 import { Utils } from '../../utils';
 import { ExternalLink, FileText } from 'lucide-react';
 
-const DatabaseTable = ({ topics, onSelectTopic }) => {
+const DatabaseTable = React.memo(({ topics, onSelectTopic }) => {
     return (
         <div className="glass-card overflow-hidden">
             <div className="overflow-x-auto">

@@ -8,11 +8,31 @@ const AIRecommendations = ({ topics }) => {
     const [error, setError] = useState(null);
     const [lastUpdated, setLastUpdated] = useState(null);
 
-    const fetchRecommendations = async () => {
-        console.log('🤖 AIRecommendations: Fetching insights for topics:', topics);
+    const fetchRecommendations = async (force = false) => {
+        console.log('🤖 AIRecommendations: Fetching insights for topics:', topics?.length);
         if (!topics || topics.length === 0) {
             console.log('🤖 AIRecommendations: No topics available');
             return;
+        }
+
+        // Check cache if not forcing refresh
+        const CACHE_KEY = `ai_recs_${topics.length}`;
+        if (!force) {
+            const cached = localStorage.getItem(CACHE_KEY);
+            if (cached) {
+                try {
+                    const { data, timestamp } = JSON.parse(cached);
+                    // Cache valid for 1 hour
+                    if (Date.now() - timestamp < 3600000) {
+                        console.log('Using cached recommendations');
+                        setRecommendations(data);
+                        setLastUpdated(new Date(timestamp));
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Cache parse error", e);
+                }
+            }
         }
 
         setLoading(true);
@@ -22,6 +42,13 @@ const AIRecommendations = ({ topics }) => {
             const data = await getRevisionInsights(topics);
             setRecommendations(data);
             setLastUpdated(new Date());
+            
+            // Save to cache
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+                data,
+                timestamp: Date.now()
+            }));
+
         } catch (err) {
             console.error('Failed to fetch AI recommendations:', err);
             const errorData = err.response?.data;
@@ -79,7 +106,7 @@ const AIRecommendations = ({ topics }) => {
                     </div>
                 </div>
                 <button
-                    onClick={fetchRecommendations}
+                    onClick={() => fetchRecommendations(true)}
                     disabled={loading}
                     className="btn btn-secondary btn-sm flex items-center gap-2"
                 >
